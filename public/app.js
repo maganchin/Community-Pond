@@ -280,6 +280,7 @@ $('find-new').addEventListener('click', () => {
 // ---------- message card ----------
 let cardContext = 'main';
 let cardAnim = 0;
+let cardOpenedAt = 0;
 function describe(d) {
   return `${COLORS[d.color]?.name || 'A'} duck${d.accessory !== 'none' ? ` · ${ACCESSORIES[d.accessory].toLowerCase()}` : ''}`;
 }
@@ -317,6 +318,7 @@ function openCard(duck, context) {
     $('card-meta').textContent = duck.starter ? 'One of the first ducks in the pond' : `Joined ${ago(duck.createdAt)}`;
   }
   renderSaveButton();
+  cardOpenedAt = performance.now();
   $('card-wrap').hidden = false;
   const c = $('card-duck');
   cancelAnimationFrame(cardAnim);
@@ -397,7 +399,10 @@ $('report-yes').addEventListener('click', async () => {
   renderNewCount();
   toast('Thanks. That message is reported and hidden for you.');
 });
-$('card-wrap').addEventListener('click', (e) => { if (e.target === $('card-wrap') || e.target.closest('[data-close]')) closeCard(); });
+$('card-wrap').addEventListener('click', (e) => {
+  if (e.target === $('card-wrap') && performance.now() - cardOpenedAt < 450) return;
+  if (e.target === $('card-wrap') || e.target.closest('[data-close]')) closeCard();
+});
 
 // ---------- duck maker ----------
 const draft = { color: 'cream', accessory: 'none', paper: 'cream' };
