@@ -267,7 +267,7 @@ export class Pond {
         if (this.keys.has('ArrowUp')) vy -= 1;
         if (this.keys.has('ArrowDown')) vy += 1;
         if (e.state === 'enter') {
-          speed = 26 * S;
+          speed = 64 * S;
           this.steer(e, Math.atan2(e.ty - e.y, e.tx - e.x), 1.2, dt);
           if (Math.hypot(e.tx - e.x, e.ty - e.y) < 12) e.state = 'swim';
         } else if (vx || vy) {
