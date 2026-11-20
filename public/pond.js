@@ -246,6 +246,7 @@ export class Pond {
       const wasDrag = down.drag;
       down = null;
       if (this.aim) { const a = this.aim; this.aim = null; this.onThrow(p, a); return; }
+      if (!wasDrag && !this.rod?.held) { const kh0 = this.hitBeach(p.x, p.y); if (kh0) { this.onBeachTap(kh0.b, kh0); return; } }
       if (this.rod && !wasDrag && this.hitRod(p)) { this.setRod(!this.rod.held); return; }
       if (this.rod?.held) { this.onInteract('fish'); return; }
       if (wasDrag) return;
@@ -748,7 +749,7 @@ export class Pond {
       a.fillStyle = '#f6eedb'; a.beginPath(); a.arc(r.hx, r.hy, br, 0, TAU); a.fill();
       a.fillStyle = '#d4553d'; a.beginPath(); a.arc(r.hx, r.hy, br, Math.PI, TAU); a.fill();
       a.strokeStyle = 'rgba(29,42,92,0.7)'; a.lineWidth = 1; a.beginPath(); a.arc(r.hx, r.hy, br, 0, TAU); a.stroke();
-      if (!r.held) tag(base.x + dx * 0.55 - ny * 22, base.y + dy * 0.55 + nx * 22, 'fishing rod', '#26315a', 'rgba(246,238,219,0.92)');
+      if (!r.held) tag(base.x + dx * 0.8 - nx * 18, base.y + dy * 0.8 - ny * 18, 'fishing rod', '#26315a', 'rgba(246,238,219,0.92)');
       else if (r.state === 'cast') { a.strokeStyle = 'rgba(38,49,90,0.35)'; a.setLineDash([4, 5]); a.beginPath(); a.arc(r.hx, r.hy, 24 * S + 6, 0, TAU); a.stroke(); a.setLineDash([]); }
     }
     if (this.aim) {
