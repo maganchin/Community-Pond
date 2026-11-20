@@ -9,6 +9,8 @@ const MAX_MESSAGE = 140;
 const REPORT_HIDE_THRESHOLD = 3;
 const COLORS = ['cream', 'butter', 'blush', 'sage', 'lavender', 'terracotta', 'mist', 'charcoal'];
 const ACCESSORIES = ['none', 'daisy', 'bow', 'sunhat', 'scarf', 'lilyleaf', 'beanie'];
+const MAX_LETTER = 280;
+const PAPERS = ['cream', 'rose', 'mint', 'sky'];
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 const db = new DatabaseSync(path.join(DATA_DIR, 'ducks.db'));
@@ -30,6 +32,23 @@ db.exec(`
     created_at INTEGER NOT NULL,
     PRIMARY KEY (duck_id, reporter)
   );
+  CREATE TABLE IF NOT EXISTS bottles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    message TEXT NOT NULL,
+    paper TEXT NOT NULL,
+    x REAL NOT NULL,
+    y REAL NOT NULL,
+    starter INTEGER NOT NULL DEFAULT 0,
+    hidden INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS bottle_reports (
+    bottle_id INTEGER NOT NULL,
+    reporter TEXT NOT NULL,
+    reason TEXT,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (bottle_id, reporter)
+  );
 `);
 
 const STARTERS = [
@@ -47,6 +66,19 @@ if (db.prepare('SELECT COUNT(*) AS n FROM ducks WHERE starter = 1').get().n === 
   const base = Date.now() - 7 * 24 * 3600 * 1000;
   STARTERS.forEach(([c, a, m], i) => ins.run(c, a, m, base + i * 60000));
 }
+
+const STARTER_BOTTLES = [
+  ['cream', 0.22, 0.3, 'Dear stranger, I tossed this in on a rainy Tuesday. I hope wherever you are, it is a little sunnier. Keep going.'],
+  ['rose', 0.76, 0.26, 'Whoever finds this: you are allowed to start over as many times as you need. Ducks do it every morning.'],
+  ['mint', 0.3, 0.78, 'Today I noticed the light on the water and felt calm for the first time in a while. Passing that calm to you.'],
+  ['sky', 0.7, 0.7, 'A small list of good things: warm bread, dogs who lean on you, the first sip of tea, strangers who write back.'],
+];
+if (db.prepare('SELECT COUNT(*) AS n FROM bottles WHERE starter = 1').get().n === 0) {
+  const ins = db.prepare('INSERT INTO bottles (paper, x, y, message, starter, created_at) VALUES (?, ?, ?, ?, 1, ?)');
+  const base = Date.now() - 7 * 24 * 3600 * 1000;
+  STARTER_BOTTLES.forEach(([p, x, y, m], i) => ins.run(p, x, y, m, base + i * 60000));
+}
+const publicBottle = (b) => ({ id: b.id, message: b.message, paper: b.paper, x: b.x, y: b.y, starter: !!b.starter, createdAt: b.created_at });
 
 const publicDuck = (d) => ({ id: d.id, color: d.color, accessory: d.accessory, message: d.message, starter: !!d.starter, createdAt: d.created_at });
 
@@ -111,6 +143,38 @@ app.post('/api/ducks/:id/report', (req, res) => {
   db.prepare('INSERT OR IGNORE INTO reports (duck_id, reporter, reason, created_at) VALUES (?, ?, ?, ?)').run(id, `${reporter}|${req.ip}`, reason, Date.now());
   const n = db.prepare('SELECT COUNT(DISTINCT reporter) AS n FROM reports WHERE duck_id = ?').get(id).n;
   if (n >= REPORT_HIDE_THRESHOLD) db.prepare('UPDATE ducks SET hidden = 1 WHERE id = ?').run(id);
+  res.json({ ok: true });
+});
+
+app.get('/api/bottles', (req, res) => {
+  const since = Number(req.query.since) || 0;
+  const rows = db.prepare('SELECT * FROM bottles WHERE hidden = 0 AND id > ? ORDER BY id DESC LIMIT 500').all(since);
+  const hidden = since ? db.prepare('SELECT id FROM bottles WHERE hidden = 1').all().map((r) => r.id) : [];
+  res.set('Cache-Control', 'no-store');
+  res.json({ bottles: rows.map(publicBottle), hidden });
+});
+
+app.post('/api/bottles', (req, res) => {
+  const body = req.body || {};
+  const message = cleanMessage(body.message);
+  const x = Number(body.x), y = Number(body.y);
+  if (!PAPERS.includes(body.paper)) return res.status(400).json({ error: 'Pick some letter paper.' });
+  if (!message) return res.status(400).json({ error: 'Write your letter first.' });
+  if ([...message].length > MAX_LETTER) return res.status(400).json({ error: `Letters can be up to ${MAX_LETTER} characters.` });
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return res.status(400).json({ error: 'Throw the bottle into the pond.' });
+  if (rateLimited(`bottle:${req.ip}`)) return res.status(429).json({ error: 'The pond needs a moment. Try throwing again in a few minutes.' });
+  const clampPos = (v) => Math.min(0.92, Math.max(0.08, v));
+  const r = db.prepare('INSERT INTO bottles (message, paper, x, y, created_at) VALUES (?, ?, ?, ?, ?)').run(message, body.paper, clampPos(x), clampPos(y), Date.now());
+  res.status(201).json({ bottle: publicBottle(db.prepare('SELECT * FROM bottles WHERE id = ?').get(Number(r.lastInsertRowid))) });
+});
+
+app.post('/api/bottles/:id/report', (req, res) => {
+  const id = Number(req.params.id);
+  const reporter = String((req.body || {}).visitor || '').slice(0, 64) || req.ip;
+  if (!db.prepare('SELECT id FROM bottles WHERE id = ?').get(id)) return res.status(404).json({ error: 'Bottle not found.' });
+  db.prepare('INSERT OR IGNORE INTO bottle_reports (bottle_id, reporter, reason, created_at) VALUES (?, ?, ?, ?)').run(id, `${reporter}|${req.ip}`, String((req.body || {}).reason || '').slice(0, 200), Date.now());
+  const n = db.prepare('SELECT COUNT(DISTINCT reporter) AS n FROM bottle_reports WHERE bottle_id = ?').get(id).n;
+  if (n >= REPORT_HIDE_THRESHOLD) db.prepare('UPDATE bottles SET hidden = 1 WHERE id = ?').run(id);
   res.json({ ok: true });
 });
 

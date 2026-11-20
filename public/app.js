@@ -1,9 +1,11 @@
-import { Pond, drawDuckPortrait } from './pond.js';
+import { Pond, drawDuckPortrait, drawBottlePortrait } from './pond.js';
+import { PAPERS } from './bottleart.js';
 import { COLORS, ACCESSORIES } from './duckart.js';
 import { paperDataURL } from './painter.js';
 
 const $ = (id) => document.getElementById(id);
 const MAX = 140;
+const MAX_LETTER = 280;
 const NEW_MS = 24 * 3600 * 1000;
 const STORE = 'duckpond.v1';
 
@@ -11,12 +13,13 @@ const STORE = 'duckpond.v1';
 function load() {
   try { return JSON.parse(localStorage.getItem(STORE)) || {}; } catch { return {}; }
 }
-const store = Object.assign({ visitor: '', saved: [], released: [], reported: [], hintSeen: false }, load());
+const store = Object.assign({ visitor: '', saved: [], released: [], reported: [], hintSeen: false, tossed: [], reportedBottles: [] }, load());
 if (!store.visitor) store.visitor = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2));
 const persist = () => { try { localStorage.setItem(STORE, JSON.stringify(store)); } catch {} };
 persist();
 window.addEventListener('storage', (e) => { if (e.key === STORE) { Object.assign(store, load()); renderMineCount(); } });
-const isSaved = (id) => store.saved.some((d) => d.id === id);
+const kindOf = (d) => (d.kind === 'bottle' ? 'bottle' : 'duck');
+const isSaved = (id, kind = 'duck') => store.saved.some((d) => d.id === id && kindOf(d) === kind);
 
 document.documentElement.style.setProperty('--paper-img', `url(${paperDataURL()})`);
 
@@ -36,7 +39,84 @@ const pond = new Pond($('pond'), {
   seed: 7,
   onDuckTap: (duck) => openCard(duck, 'main'),
   onInteract: () => dismissHint(),
+  onBottleTap: () => toast('Pick up the fishing rod on the left bank to reel in that bottle.'),
+  onBottleCatch: (b) => { catching = true; openCard(b, 'catch'); },
+  onThrow: (p, aim) => throwBottle(p, aim),
+  onRodChange: (held) => {
+    $('rod-btn').textContent = held ? 'Put the rod down' : 'Pick up the rod';
+    $('rod-btn').setAttribute('aria-pressed', held);
+    document.body.classList.toggle('fishing', held);
+    if (held) toast(touch ? 'Drag the line across the pond to hook a bottle.' : 'Move the line across the pond (mouse or arrow keys) to hook a bottle.');
+    dismissHint();
+  },
 });
+let catching = false;
+
+// ---------- bottles ----------
+const bpool = new Map();
+let maxBottleId = 0;
+const bottleCap = () => Math.max(5, Math.min(14, Math.floor((pond.w * pond.h) / 50000)));
+const floating = () => pond.bottles.filter((o) => o.state !== 'sink');
+function ingestBottles(list) {
+  const added = [];
+  for (const b of list) {
+    if (store.reportedBottles.includes(b.id)) continue;
+    b.kind = 'bottle';
+    if (!bpool.has(b.id)) added.push(b);
+    bpool.set(b.id, b);
+    maxBottleId = Math.max(maxBottleId, b.id);
+  }
+  return added;
+}
+function pickBottle() {
+  const shown = new Set(pond.bottles.map((o) => o.b.id));
+  const c = [...bpool.values()].filter((b) => !shown.has(b.id));
+  if (!c.length) return null;
+  const fresh = c.filter(isNewDuck).sort((a, b) => b.createdAt - a.createdAt);
+  if (fresh.length) return fresh[0];
+  c.sort((a, b) => (recentlyShown.get(`b${a.id}`) || 0) - (recentlyShown.get(`b${b.id}`) || 0) || Math.random() - 0.5);
+  return c[0];
+}
+function sinkOldBottle() {
+  const old = shuffled(pond.bottles.filter((o) => o.state === 'float' && !isNewDuck(o.b) && o.b !== openDuck));
+  if (old.length) pond.removeBottle(old[0].b.id);
+  return old.length > 0;
+}
+function fillBottles() {
+  let guard = 0;
+  while (floating().length < bottleCap() && guard++ < 40) {
+    const b = pickBottle();
+    if (!b) break;
+    recentlyShown.set(`b${b.id}`, Date.now());
+    pond.addBottle(b);
+  }
+}
+setInterval(() => {
+  if (document.hidden || bpool.size <= floating().length) return;
+  if (floating().length >= bottleCap() && !sinkOldBottle()) return;
+  setTimeout(fillBottles, 1500);
+}, 22000);
+let pendingLetter = '';
+function throwBottle(p, aim) {
+  document.body.classList.remove('aiming');
+  $('aim-bar').hidden = true;
+  const x = Math.min(0.92, Math.max(0.08, p.x / pond.w)), y = Math.min(0.88, Math.max(0.12, p.y / pond.h));
+  const message = pendingLetter;
+  const temp = { kind: 'bottle', id: -Date.now(), paper: aim.paper, message, createdAt: Date.now(), x, y, starter: false };
+  const o = pond.addBottle(temp, { from: pond.aimOrigin() });
+  api('/api/bottles', { method: 'POST', body: JSON.stringify({ message, paper: aim.paper, x, y }) })
+    .then(({ bottle }) => {
+      bottle.kind = 'bottle';
+      o.b = bottle;
+      ingestBottles([bottle]);
+      store.tossed.push(bottle.id);
+      persist();
+      $('letter').value = '';
+      pendingLetter = '';
+      toast('Splash! Your bottle is bobbing in the pond for a stranger to fish out.');
+    })
+    .catch((err) => { pond.removeBottle(temp.id); toast(err.message); openLetter(); });
+}
 const guest = { id: 0, guest: true, color: 'cream', accessory: 'none', message: '' };
 
 function capacity() {
@@ -114,6 +194,17 @@ async function refresh() {
     }
     fillPond();
     renderNewCount();
+    const bd = await api(`/api/bottles?since=${maxBottleId}`);
+    const newB = ingestBottles(bd.bottles);
+    for (const id of bd.hidden || []) { bpool.delete(id); pond.removeBottle(id); }
+    for (const b of newB) {
+      if (store.tossed.includes(b.id) || pond.hasBottle(b.id)) continue;
+      if (floating().length >= bottleCap()) sinkOldBottle();
+      recentlyShown.set(`b${b.id}`, Date.now());
+      const o = pond.addBottle(b);
+      pond.splash(o.x, o.y, 1.4);
+    }
+    fillBottles();
   } catch {}
 }
 
@@ -121,6 +212,7 @@ async function init() {
   try {
     const data = await api('/api/ducks');
     ingest(data.ducks);
+    ingestBottles((await api('/api/bottles')).bottles);
   } catch {
     toast('Could not reach the pond. Retrying…');
   }
@@ -129,6 +221,7 @@ async function init() {
   const e = pond.add(me, { from: 'random', player: true });
   e.x = pond.w / 2; e.y = pond.h * 0.6; e.h = -Math.PI / 2;
   fillPond(true);
+  fillBottles();
   renderNewCount();
   renderMineCount();
   pond.start();
@@ -140,7 +233,7 @@ async function init() {
 const touch = matchMedia('(pointer: coarse)').matches;
 function showHint() {
   if (store.hintSeen) return;
-  $('hint').textContent = touch ? 'Tap the water to swim. Tap a duck to read its message.' : 'Arrow keys or click to swim. Click a duck to read its message.';
+  $('hint').textContent = touch ? 'Tap the water to swim. Tap a duck to read it. Grab the rod on the left to fish for bottles.' : 'Arrow keys or click to swim. Click a duck to read it. Grab the rod on the left to fish for bottles.';
   $('hint').hidden = false;
 }
 function dismissHint() {
@@ -200,7 +293,9 @@ function ago(ts) {
 function openCard(duck, context) {
   openDuck = duck;
   cardContext = context;
-  const own = store.released.includes(duck.id);
+  const bottle = kindOf(duck) === 'bottle';
+  const own = bottle ? store.tossed.includes(duck.id) : store.released.includes(duck.id);
+  $('card').classList.toggle('letter', bottle);
   $('report-confirm').hidden = true;
   $('card-make').hidden = !duck.guest;
   $('card-save').hidden = duck.guest || context === 'mine';
@@ -210,6 +305,10 @@ function openCard(duck, context) {
     $('card-kicker').textContent = 'This is you';
     $('card-message').textContent = 'Make a duck, tuck a message inside, and release it for a stranger to find.';
     $('card-meta').textContent = '';
+  } else if (bottle) {
+    $('card-kicker').textContent = own ? 'Your message in a bottle' : 'You fished out a message in a bottle';
+    $('card-message').textContent = duck.message;
+    $('card-meta').textContent = duck.starter ? 'Bobbing here since the pond began' : `Tossed in ${ago(duck.createdAt)}`;
   } else {
     $('card-kicker').textContent = own ? 'Your duck' : describe(duck);
     $('card-message').textContent = duck.message;
@@ -221,16 +320,17 @@ function openCard(duck, context) {
   cancelAnimationFrame(cardAnim);
   const t0 = performance.now();
   const tick = (t) => {
-    drawDuckPortrait(c, duck, { heading: -Math.PI / 2 + Math.sin((t - t0) / 1400) * 0.25, phase: (t - t0) / 600 });
+    if (bottle) drawBottlePortrait(c, duck, { t: (t - t0) / 1000 });
+    else drawDuckPortrait(c, duck, { heading: -Math.PI / 2 + Math.sin((t - t0) / 1400) * 0.25, phase: (t - t0) / 600 });
     if (!$('card-wrap').hidden) cardAnim = requestAnimationFrame(tick);
   };
   cardAnim = requestAnimationFrame(tick);
-  (context === 'main' ? $('card-save') : $('card-remove')).focus({ preventScroll: true });
+  (context !== 'mine' ? $('card-save') : $('card-remove')).focus({ preventScroll: true });
 }
 function renderSaveButton() {
   const b = $('card-save');
   if (!openDuck || openDuck.guest) return;
-  const saved = isSaved(openDuck.id);
+  const saved = isSaved(openDuck.id, kindOf(openDuck));
   b.textContent = saved ? 'Saved in My Pond' : 'Save to My Pond';
   b.disabled = saved;
   b.classList.toggle('saved', saved);
@@ -238,13 +338,18 @@ function renderSaveButton() {
 function closeCard() {
   $('card-wrap').hidden = true;
   openDuck = null;
+  if (catching) { catching = false; pond.releaseCatch(); }
   cancelAnimationFrame(cardAnim);
 }
 $('card-save').addEventListener('click', () => {
   const d = openDuck;
   if (!d || d.guest) return;
-  if (isSaved(d.id)) { toast('That duck is already in your pond.'); return; }
-  store.saved.push({ id: d.id, color: d.color, accessory: d.accessory, message: d.message, createdAt: d.createdAt, starter: !!d.starter, savedAt: Date.now() });
+  const kind = kindOf(d);
+  if (d.id < 0) return;
+  if (isSaved(d.id, kind)) { toast(`That ${kind} is already in your pond.`); return; }
+  store.saved.push(kind === 'bottle'
+    ? { kind, id: d.id, paper: d.paper, message: d.message, createdAt: d.createdAt, starter: !!d.starter, savedAt: Date.now() }
+    : { kind, id: d.id, color: d.color, accessory: d.accessory, message: d.message, createdAt: d.createdAt, starter: !!d.starter, savedAt: Date.now() });
   persist();
   renderSaveButton();
   renderMineCount();
@@ -253,9 +358,10 @@ $('card-save').addEventListener('click', () => {
 $('card-remove').addEventListener('click', () => {
   const d = openDuck;
   if (!d) return;
-  store.saved = store.saved.filter((s) => s.id !== d.id);
+  const kind = kindOf(d);
+  store.saved = store.saved.filter((s) => !(s.id === d.id && kindOf(s) === kind));
   persist();
-  mini?.remove(d.id);
+  if (kind === 'bottle') mini?.removeBottle(d.id); else mini?.remove(d.id);
   closeCard();
   renderMineCount();
   renderMine();
@@ -267,11 +373,25 @@ $('report-no').addEventListener('click', () => { $('report-confirm').hidden = tr
 $('report-yes').addEventListener('click', async () => {
   const d = openDuck;
   if (!d) return;
+  if (kindOf(d) === 'bottle') {
+    try { await api(`/api/bottles/${d.id}/report`, { method: 'POST', body: JSON.stringify({ visitor: store.visitor }) }); } catch {}
+    store.reportedBottles.push(d.id);
+    store.saved = store.saved.filter((s) => !(s.id === d.id && kindOf(s) === 'bottle'));
+    persist();
+    bpool.delete(d.id);
+    if (catching) { catching = false; pond.releaseCatch({ keep: false }); }
+    pond.removeBottle(d.id);
+    mini?.removeBottle(d.id, { sink: false });
+    closeCard();
+    renderMineCount();
+    toast('Thanks. That letter is reported and hidden for you.');
+    return;
+  }
   try {
     await api(`/api/ducks/${d.id}/report`, { method: 'POST', body: JSON.stringify({ visitor: store.visitor }) });
   } catch {}
   store.reported.push(d.id);
-  store.saved = store.saved.filter((s) => s.id !== d.id);
+  store.saved = store.saved.filter((s) => !(s.id === d.id && kindOf(s) === 'duck'));
   persist();
   pool.delete(d.id);
   pond.remove(d.id);
@@ -284,7 +404,7 @@ $('report-yes').addEventListener('click', async () => {
 $('card-wrap').addEventListener('click', (e) => { if (e.target === $('card-wrap') || e.target.closest('[data-close]')) closeCard(); });
 
 // ---------- duck maker ----------
-const draft = { color: 'cream', accessory: 'none' };
+const draft = { color: 'cream', accessory: 'none', paper: 'cream' };
 let previewAnim = 0;
 function radioGroup(container, entries, key, renderItem) {
   container.setAttribute('role', 'radiogroup');
@@ -394,27 +514,73 @@ $('maker').addEventListener('submit', async (ev) => {
   }
 });
 
+// ---------- letters ----------
+radioGroup($('papers'), Object.entries(PAPERS).map(([k, v]) => [k, v.name]), 'paper', (value, label) => {
+  const b = document.createElement('button');
+  b.className = 'swatch';
+  b.style.backgroundColor = PAPERS[value].paper;
+  b.setAttribute('aria-label', `${label} paper`);
+  b.title = label;
+  return b;
+});
+function openLetter() {
+  closeCard();
+  closeMaker();
+  pond.setRod(false);
+  $('letter-wrap').hidden = false;
+  $('letter-error').textContent = '';
+  updateLetterCount();
+  setTimeout(() => $('letter').focus({ preventScroll: true }), 50);
+}
+function closeLetter() { $('letter-wrap').hidden = true; }
+function updateLetterCount() {
+  const n = [...$('letter').value].length;
+  $('letter-count').textContent = `${n}/${MAX_LETTER}`;
+  $('seal').disabled = n === 0 || n > MAX_LETTER;
+}
+function cancelAim() { pond.stopAim(); document.body.classList.remove('aiming'); $('aim-bar').hidden = true; }
+$('letter').addEventListener('input', updateLetterCount);
+$('open-letter').addEventListener('click', openLetter);
+$('letter-wrap').addEventListener('click', (e) => { if (e.target === $('letter-wrap') || e.target.closest('[data-close]')) closeLetter(); });
+$('letter-form').addEventListener('submit', (ev) => {
+  ev.preventDefault();
+  const m = $('letter').value.trim();
+  if (!m) { $('letter-error').textContent = 'Write your letter first.'; return; }
+  if ([...m].length > MAX_LETTER) { $('letter-error').textContent = `Letters can be up to ${MAX_LETTER} characters.`; return; }
+  pendingLetter = m;
+  closeLetter();
+  pond.startAim(draft.paper);
+  document.body.classList.add('aiming');
+  $('aim-bar').hidden = false;
+  dismissHint();
+});
+$('aim-cancel').addEventListener('click', () => { cancelAim(); openLetter(); });
+$('rod-btn').addEventListener('click', () => { cancelAim(); pond.setRod(!pond.rod.held); });
+
 // ---------- My Pond ----------
 let mini = null;
 function renderMineCount() {
   $('mine-count').textContent = store.saved.length;
-  $('open-mine').setAttribute('aria-label', `My Pond, ${store.saved.length} saved duck${store.saved.length === 1 ? '' : 's'}`);
+  $('open-mine').setAttribute('aria-label', `My Pond, ${store.saved.length} saved`);
 }
 function renderMine() {
   const n = store.saved.length;
   $('mine-empty').hidden = n > 0;
-  $('mine-sub').textContent = n ? `${n} saved duck${n === 1 ? '' : 's'}, kept in this browser. Tap one to reread it.` : 'Ducks you save are kept in this browser.';
+  $('mine-sub').textContent = n ? `${n} saved, kept in this browser. Tap one to reread it.` : 'Ducks and letters you save are kept in this browser.';
   if (!mini) return;
-  const ids = new Set(store.saved.map((d) => d.id));
+  const ducks = store.saved.filter((d) => kindOf(d) === 'duck'), bottles = store.saved.filter((d) => kindOf(d) === 'bottle');
+  const ids = new Set(ducks.map((d) => d.id)), bids = new Set(bottles.map((b) => b.id));
   for (const e of [...mini.entities]) if (!ids.has(e.duck.id)) mini.remove(e.duck.id, { leave: false });
-  for (const d of store.saved) if (!mini.has(d.id)) mini.add(d, { from: 'random' });
+  for (const d of ducks) if (!mini.has(d.id)) mini.add(d, { from: 'random' });
+  for (const o of [...mini.bottles]) if (!bids.has(o.b.id)) mini.removeBottle(o.b.id, { sink: false });
+  for (const b of bottles) if (!mini.hasBottle(b.id)) mini.addBottle(b);
 }
 function openMine() {
   closeCard();
   closeMaker();
   $('mine-wrap').hidden = false;
   pond.stop();
-  if (!mini) mini = new Pond($('mini-pond'), { mini: true, seed: 19, onDuckTap: (d) => openCard(d, 'mine') });
+  if (!mini) mini = new Pond($('mini-pond'), { mini: true, seed: 19, onDuckTap: (d) => openCard(d, 'mine'), onBottleTap: (b) => openCard(b, 'mine') });
   else mini.resize();
   renderMine();
   mini.start();
@@ -435,17 +601,20 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     if (!$('card-wrap').hidden) closeCard();
     else if (!$('maker-wrap').hidden) closeMaker();
+    else if (!$('letter-wrap').hidden) closeLetter();
+    else if (pond.aim) cancelAim();
+    else if (pond.rod?.held) pond.setRod(false);
     else if (!$('mine-wrap').hidden) closeMine();
     return;
   }
-  const busy = !$('card-wrap').hidden || !$('maker-wrap').hidden || !$('mine-wrap').hidden;
+  const busy = !$('card-wrap').hidden || !$('maker-wrap').hidden || !$('letter-wrap').hidden || !$('mine-wrap').hidden;
   if (busy || e.target.closest?.('textarea, input')) return;
   if (ARROWS.includes(e.key)) {
     e.preventDefault();
     pond.keys.add(e.key);
     pond.showKeyHint = true;
     dismissHint();
-  } else if ((e.key === 'Enter' || e.key === ' ') && pond.nearby && pond.showKeyHint && document.activeElement === document.body) {
+  } else if ((e.key === 'Enter' || e.key === ' ') && !pond.rod?.held && pond.nearby && pond.showKeyHint && document.activeElement === document.body) {
     e.preventDefault();
     openCard(pond.nearby.duck, 'main');
   }

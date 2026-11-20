@@ -25,7 +25,7 @@ button, textarea { font: inherit; color: inherit; }
 
 .edge { position: fixed; z-index: 5; display: flex; gap: 10px; align-items: center; pointer-events: none; }
 .edge > * { pointer-events: auto; }
-.top-left { top: calc(10px + env(safe-area-inset-top)); left: calc(10px + env(safe-area-inset-left)); }
+.top-left { flex-direction: column; align-items: flex-start; top: calc(10px + env(safe-area-inset-top)); left: calc(10px + env(safe-area-inset-left)); }
 .top-right { top: calc(10px + env(safe-area-inset-top)); right: calc(10px + env(safe-area-inset-right)); }
 .bottom { bottom: calc(14px + env(safe-area-inset-bottom)); left: 0; right: 0; justify-content: center; flex-wrap: wrap; padding: 0 10px; }
 
@@ -133,3 +133,21 @@ textarea {
 .mine-empty { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(80vw, 320px); text-align: center; font-size: 20px; margin: 0; background: rgba(246, 238, 219, 0.88); padding: 12px 16px; border-radius: 14px; }
 
 @media (prefers-reduced-motion: reduce) { .card, .sheet { animation: none; } }
+
+#rod-btn[aria-pressed="true"] { background: #e8eedb; border-color: #5b7a3a; color: #3d5a24; }
+textarea.lined {
+  line-height: 30px; padding-top: 2px; background-color: rgba(255, 255, 255, 0.5); background-attachment: local;
+  background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 29px, rgba(60, 90, 160, 0.25) 29px, rgba(60, 90, 160, 0.25) 30px);
+}
+.card.letter { width: min(380px, 100%); }
+.card.letter .message {
+  text-align: left; font-size: 21px; line-height: 28px; padding: 0 6px;
+  background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 27px, rgba(60, 90, 160, 0.22) 27px, rgba(60, 90, 160, 0.22) 28px);
+}
+.aim-bar {
+  position: fixed; z-index: 6; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+  display: flex; gap: 10px; align-items: center; width: max-content; max-width: 94vw; padding: 6px 8px 6px 14px;
+  background: rgba(246, 238, 219, 0.95); border: 1.5px solid var(--ink); border-radius: 16px;
+}
+.aim-bar p { margin: 0; font-size: 18px; }
+body.aiming .edge.bottom, body.aiming .hint, body.fishing #find-new { display: none !important; }
