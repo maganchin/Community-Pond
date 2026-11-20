@@ -300,7 +300,7 @@ function openCard(duck, context) {
   $('card-make').hidden = !duck.guest;
   $('card-save').hidden = !bottle || context === 'mine';
   $('card-remove').hidden = !bottle || context !== 'mine';
-  $('card-fish').hidden = bottle || duck.guest;
+  $('card-fish').hidden = bottle;
   $('card-report').hidden = !bottle || own;
   if (duck.guest) {
     $('card-kicker').textContent = 'This is you';
