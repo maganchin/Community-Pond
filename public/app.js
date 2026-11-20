@@ -141,6 +141,7 @@ const touch = matchMedia('(pointer: coarse)').matches;
 function showHint() {
   if (store.hintSeen) return;
   $('hint').textContent = touch ? 'Tap the water to swim. Tap a duck to read its message.' : 'Arrow keys or click to swim. Click a duck to read its message.';
+  $('hint').hidden = false;
 }
 function dismissHint() {
   if (store.hintSeen) return;
