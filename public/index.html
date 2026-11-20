@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#5e7fc0">
+  <meta name="description" content="A shared painted pond where everyone is a duck. Tuck a message inside a duck and release it for a stranger to find.">
+  <title>Duck Pond</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="preload" href="/fonts/patrick-hand-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main id="pond" class="pond" aria-label="The shared duck pond"></main>
+
+  <header class="edge top-left">
+    <h1 class="title-tag">Duck Pond</h1>
+  </header>
+  <div class="edge top-right">
+    <button id="open-mine" class="btn paper" type="button">My Pond <span id="mine-count" class="count">0</span></button>
+  </div>
+  <div class="edge bottom">
+    <button id="find-new" class="btn paper small" type="button" hidden>New ducks <span id="new-count" class="count">0</span></button>
+    <button id="open-maker" class="btn ink" type="button">Make a duck</button>
+  </div>
+  <p id="hint" class="hint" role="status"></p>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <!-- message card -->
+  <div id="card-wrap" class="overlay" hidden>
+    <article id="card" class="card paper-bg" role="dialog" aria-modal="true" aria-labelledby="card-message">
+      <button class="close" type="button" data-close aria-label="Close">&times;</button>
+      <canvas id="card-duck" class="card-duck" width="120" height="120" aria-hidden="true"></canvas>
+      <p id="card-kicker" class="kicker"></p>
+      <p id="card-message" class="message"></p>
+      <p id="card-meta" class="meta"></p>
+      <div id="card-actions" class="actions">
+        <button id="card-save" class="btn ink" type="button">Save to My Pond</button>
+        <button id="card-remove" class="btn paper" type="button" hidden>Remove from My Pond</button>
+        <button id="card-make" class="btn ink" type="button" hidden>Make a duck</button>
+      </div>
+      <button id="card-report" class="link" type="button">Report this message</button>
+      <div id="report-confirm" class="report-confirm" hidden>
+        <p>Report this message? It will be hidden for you, and after a few reports it leaves the pond for everyone.</p>
+        <div class="actions">
+          <button id="report-yes" class="btn ink small" type="button">Report</button>
+          <button id="report-no" class="btn paper small" type="button">Cancel</button>
+        </div>
+      </div>
+    </article>
+  </div>
+
+  <!-- duck maker -->
+  <div id="maker-wrap" class="overlay sheet-wrap" hidden>
+    <form id="maker" class="sheet paper-bg" role="dialog" aria-modal="true" aria-labelledby="maker-title" novalidate>
+      <button class="close" type="button" data-close aria-label="Close">&times;</button>
+      <h2 id="maker-title">Make a duck</h2>
+      <div class="maker-grid">
+        <canvas id="preview" class="preview" aria-label="Live preview of your duck" role="img"></canvas>
+        <div class="choices">
+          <fieldset>
+            <legend>Color</legend>
+            <div id="colors" class="swatches"></div>
+          </fieldset>
+          <fieldset>
+            <legend>Accessory</legend>
+            <div id="accessories" class="chips"></div>
+          </fieldset>
+        </div>
+      </div>
+      <label for="message" class="label">Tuck a little message inside</label>
+      <textarea id="message" name="message" rows="3" maxlength="140" placeholder="Something kind for a stranger to find…" required></textarea>
+      <div class="row-between">
+        <span class="note">Plain text, shown publicly. No names or addresses.</span>
+        <span id="char-count" class="note">0/140</span>
+      </div>
+      <p id="maker-error" class="error" role="alert"></p>
+      <button id="release" class="btn ink wide" type="submit">Release my duck</button>
+    </form>
+  </div>
+
+  <!-- my pond -->
+  <section id="mine-wrap" class="mine paper-bg" hidden aria-labelledby="mine-title">
+    <div class="mine-head">
+      <h2 id="mine-title">My Pond</h2>
+      <button id="close-mine" class="btn paper" type="button">Back to the big pond</button>
+    </div>
+    <p id="mine-sub" class="mine-sub"></p>
+    <div id="mini-pond" class="mini-pond"></div>
+    <p id="mine-empty" class="mine-empty" hidden>Your pond is empty for now. Tap a duck in the big pond and choose “Save to My Pond”.</p>
+  </section>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
