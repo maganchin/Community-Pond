@@ -80,7 +80,7 @@ if (db.prepare('SELECT COUNT(*) AS n FROM bottles WHERE starter = 1').get().n ==
 }
 const publicBottle = (b) => ({ id: b.id, message: b.message, paper: b.paper, x: b.x, y: b.y, starter: !!b.starter, createdAt: b.created_at });
 
-const publicDuck = (d) => ({ id: d.id, color: d.color, accessory: d.accessory, message: d.message, starter: !!d.starter, createdAt: d.created_at });
+const publicDuck = (d) => ({ id: d.id, color: d.color, accessory: d.accessory, starter: !!d.starter, createdAt: d.created_at });
 
 function cleanMessage(raw) {
   if (typeof raw !== 'string') return '';
@@ -123,13 +123,10 @@ app.get('/api/ducks/:id', (req, res) => {
 
 app.post('/api/ducks', (req, res) => {
   const { color, accessory } = req.body || {};
-  const message = cleanMessage((req.body || {}).message);
   if (!COLORS.includes(color)) return res.status(400).json({ error: 'Pick a duck color.' });
   if (!ACCESSORIES.includes(accessory)) return res.status(400).json({ error: 'Pick an accessory.' });
-  if (!message) return res.status(400).json({ error: 'Tuck a little message inside your duck first.' });
-  if ([...message].length > MAX_MESSAGE) return res.status(400).json({ error: `Messages can be up to ${MAX_MESSAGE} characters.` });
   if (rateLimited(req.ip)) return res.status(429).json({ error: 'The pond needs a moment. Try releasing again in a few minutes.' });
-  const r = db.prepare('INSERT INTO ducks (color, accessory, message, created_at) VALUES (?, ?, ?, ?)').run(color, accessory, message, Date.now());
+  const r = db.prepare('INSERT INTO ducks (color, accessory, message, created_at) VALUES (?, ?, ?, ?)').run(color, accessory, '', Date.now());
   const d = db.prepare('SELECT * FROM ducks WHERE id = ?').get(Number(r.lastInsertRowid));
   res.status(201).json({ duck: publicDuck(d) });
 });
