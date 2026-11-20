@@ -1,3 +1,4 @@
+const TAU = Math.PI * 2;
 // Procedural watercolor painting: pond washes, lily pads, pencil spirals, paper grain.
 export function rng(seed) {
   let s = seed >>> 0;
@@ -181,7 +182,7 @@ export function applyGrain(ctx, w, h, strength = 1) {
 }
 
 // Paint the full pond into ctx (w,h in device pixels). `unit` scales line widths.
-export function paintPond(ctx, w, h, { seed = 7, unit = 1, pads = true } = {}) {
+export function paintPond(ctx, w, h, { seed = 7, unit = 1, pads = true, beach = null } = {}) {
   const r = rng(seed);
   const m = Math.min(w, h), M = Math.max(w, h);
   // 1) soft washes painted at low resolution and scaled up so the pigment edges bleed
@@ -260,7 +261,58 @@ export function paintPond(ctx, w, h, { seed = 7, unit = 1, pads = true } = {}) {
       lilyPad(ctx, w * (0.2 + r() * 0.6), h + R0 * 0.25, R0 * 0.9, r, unit, Math.PI / 2);
     }
   }
+  if (beach) paintBeach(ctx, beach, r, unit);
   applyGrain(ctx, w, h);
+}
+
+export function beachPath(b, seed = 5, k = 1) {
+  const r = rng(seed);
+  const ph = [r() * TAU, r() * TAU, r() * TAU];
+  const pts = [];
+  for (let i = 0; i <= 60; i++) {
+    const a = -Math.PI / 2 - 0.15 + (i / 60) * (Math.PI / 2 + 0.3);
+    const wob = 1 + Math.sin(a * 5 + ph[0]) * 0.04 + Math.sin(a * 9 + ph[1]) * 0.025 + Math.sin(a * 17 + ph[2]) * 0.012;
+    pts.push({ x: b.cx + Math.cos(a) * b.rx * wob * k, y: b.cy + Math.sin(a) * b.ry * wob * k });
+  }
+  return pts;
+}
+function paintBeach(ctx, b, r, unit) {
+  const trace = (pts) => {
+    ctx.beginPath();
+    ctx.moveTo(b.cx - 4, b.cy + 4);
+    pts.forEach((p) => ctx.lineTo(p.x, p.y));
+    ctx.closePath();
+  };
+  // wet sand rim, then dry sand
+  ctx.save();
+  ctx.globalAlpha = 0.45; ctx.fillStyle = '#9c8a64';
+  trace(beachPath(b, 5, 1.07)); ctx.fill();
+  ctx.globalAlpha = 1; ctx.fillStyle = '#e3cb98';
+  trace(beachPath(b, 5, 1)); ctx.fill();
+  trace(beachPath(b, 5, 1)); ctx.clip();
+  const m = Math.min(b.rx, b.ry);
+  for (let i = 0; i < 16; i++) {
+    const a = -Math.PI / 2 * r(), f = r();
+    wash(ctx, b.cx + Math.cos(a) * b.rx * f, b.cy + Math.sin(a) * b.ry * f, m * (0.15 + r() * 0.25), r() > 0.5 ? '#d2b27a' : '#f3e4bd', r, { layers: 10, alpha: 0.06 });
+  }
+  wash(ctx, b.cx + b.rx * 0.6, b.cy - b.ry * 0.6, m * 0.25, '#b99c68', r, { layers: 8, alpha: 0.05 });
+  for (let i = 0; i < (b.rx * b.ry) / 90; i++) {
+    const a = -Math.PI / 2 * r(), f = Math.sqrt(r());
+    ctx.fillStyle = r() > 0.5 ? 'rgba(120,90,50,0.22)' : 'rgba(255,250,235,0.35)';
+    ctx.fillRect(b.cx + Math.cos(a) * b.rx * f, b.cy + Math.sin(a) * b.ry * f, 1.4 * unit, 1.4 * unit);
+  }
+  for (let i = 0; i < 9; i++) {
+    const a = -Math.PI / 2 * (0.1 + r() * 0.8), f = 0.2 + r() * 0.7, s = (3 + r() * 5) * unit;
+    const x = b.cx + Math.cos(a) * b.rx * f, y = b.cy + Math.sin(a) * b.ry * f;
+    ctx.fillStyle = ['#b5ab9b', '#c9bfae', '#9f968a'][i % 3];
+    ctx.beginPath(); ctx.ellipse(x, y, s, s * 0.7, r() * TAU, 0, TAU); ctx.fill();
+    ctx.strokeStyle = 'rgba(70,60,45,0.45)'; ctx.lineWidth = 0.8 * unit; ctx.stroke();
+  }
+  ctx.restore();
+  // foam and pencil shoreline
+  pencilLine(ctx, beachPath(b, 5, 1.1), { color: '#f7fbff', width: 2.2 * unit, alpha: 0.55, r, gaps: 0.15 });
+  pencilLine(ctx, beachPath(b, 5, 1.0), { color: '#5d4a30', width: 1.3 * unit, alpha: 0.55, r });
+  pencilLine(ctx, beachPath(b, 5, 1.15), { color: '#f4f8ff', width: 1.4 * unit, alpha: 0.35, r, gaps: 0.35 });
 }
 
 // Cream paper texture as a data URL for cards and panels

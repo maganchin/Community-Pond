@@ -10,10 +10,12 @@ const NEW_MS = 24 * 3600 * 1000;
 const NOKEYS = new Set();
 
 export class Pond {
-  constructor(root, { mini = false, seed = 7, onDuckTap = () => {}, onWaterTap = () => {}, onInteract = () => {}, onBottleTap = () => {}, onBottleCatch = () => {}, onThrow = () => {}, onRodChange = () => {} } = {}) {
+  constructor(root, { mini = false, seed = 7, onDuckTap = () => {}, onWaterTap = () => {}, onInteract = () => {}, onBottleTap = () => {}, onBottleCatch = () => {}, onThrow = () => {}, onRodChange = () => {}, onBeachTap = () => {} } = {}) {
     this.root = root;
-    Object.assign(this, { onBottleTap, onBottleCatch, onThrow, onRodChange });
+    Object.assign(this, { onBottleTap, onBottleCatch, onThrow, onRodChange, onBeachTap });
     this.bottles = [];
+    this.beach = [];
+    this.beachG = null;
     this.splashes = [];
     this.aim = null;
     this.rod = mini ? null : { held: false, state: 'cast', hx: 0, hy: 0, tx: 0, ty: 0, hooked: null, ang: null };
@@ -56,6 +58,9 @@ export class Pond {
     this.dpr = Math.min(window.devicePixelRatio || 1, 2);
     const m = Math.min(w, h);
     this.scale = this.mini ? clamp(m / 640, 0.5, 0.8) : clamp(m / 520, 0.72, 1.05);
+    if (!this.mini) this.beachG = { cx: 0, cy: h, rx: clamp(w * 0.55, 170, 380), ry: clamp(h * 0.25, 140, 260) };
+    for (const o of this.bottles) this.placeBottle(o);
+    for (const k of this.beach) this.placeKept(k);
     for (const c of [this.dk, this.ac]) {
       c.width = Math.round(w * this.dpr); c.height = Math.round(h * this.dpr);
     }
@@ -73,7 +78,8 @@ export class Pond {
     this.bg.width = W2; this.bg.height = H2;
     const g = this.bg.getContext('2d');
     if (!this.mini) {
-      paintPond(g, W2, H2, { seed: this.seed, unit: bdpr });
+      const bg = this.beachG;
+      paintPond(g, W2, H2, { seed: this.seed, unit: bdpr, beach: bg && { cx: bg.cx * bdpr, cy: bg.cy * bdpr, rx: bg.rx * bdpr, ry: bg.ry * bdpr } });
     } else {
       const off = document.createElement('canvas');
       off.width = W2; off.height = H2;
@@ -121,7 +127,19 @@ export class Pond {
       const dx = (x - this.w / 2) / rx, dy = (y - this.h / 2) / ry;
       return dx * dx + dy * dy <= 1;
     }
-    return x > margin && y > margin && x < this.w - margin && y < this.h - margin;
+    return x > margin && y > margin && x < this.w - margin && y < this.h - margin && !this.inBeach(x, y, margin);
+  }
+  inBeach(x, y, m = 0) {
+    const g = this.beachG;
+    if (!g) return false;
+    const dx = (x - g.cx) / (g.rx * 1.08 + m), dy = (y - g.cy) / (g.ry * 1.08 + m);
+    return dx * dx + dy * dy < 1;
+  }
+  outOfBeach(x, y, m = 0) {
+    const g = this.beachG;
+    if (!this.inBeach(x, y, m)) return { x, y };
+    const a = Math.atan2((y - g.cy) / (g.ry * 1.08 + m), (x - g.cx) / (g.rx * 1.08 + m));
+    return { x: g.cx + Math.cos(a) * (g.rx * 1.08 + m) * 1.01, y: g.cy + Math.sin(a) * (g.ry * 1.08 + m) * 1.01 };
   }
 
   refreshSprites(e) {
@@ -233,6 +251,8 @@ export class Pond {
       if (wasDrag) return;
       const hit = this.hitTest(p.x, p.y);
       if (hit) { this.onDuckTap(hit.duck, hit); return; }
+      const kh = this.hitBeach(p.x, p.y);
+      if (kh) { this.onBeachTap(kh.b, kh); return; }
       const bh = this.hitBottle(p.x, p.y);
       if (bh) { this.onBottleTap(bh.b, bh); return; }
       if (this.player) {
@@ -266,9 +286,64 @@ export class Pond {
     const o = { b, ax, ay, x: ax * this.w, y: ay * this.h, rot: Math.random() * TAU, spin: (Math.random() - 0.5) * 0.12, phase: Math.random() * TAU,
       state: 'float', born: now, t0: now, cool: 0, lift: 0 };
     if (from) { o.state = 'fly'; o.fx = from.x; o.fy = from.y; o.dur = 1100; o.born = now - 2000; }
+    this.placeBottle(o);
+    o.x = o.ax * this.w; o.y = o.ay * this.h;
     this.bottleSprites(o);
     this.bottles.push(o);
     return o;
+  }
+  placeBottle(o) {
+    if (!this.w || this.mini) return;
+    o.ax = o.b.x ?? o.ax; o.ay = o.b.y ?? o.ay;
+    const q = this.outOfBeach(o.ax * this.w, o.ay * this.h, 26 * this.scale);
+    o.ax = q.x / this.w; o.ay = q.y / this.h;
+  }
+  // ---------- kept bottles lying on the beach ----------
+  placeKept(k) {
+    const g = this.beachG;
+    if (!g) return;
+    const r = rng((k.b.id || 1) * 7 + 3);
+    const a = -Math.PI / 2 * (0.1 + r() * 0.8), f = 0.28 + r() * 0.55;
+    let x = g.cx + Math.cos(a) * g.rx * f, y = g.cy + Math.sin(a) * g.ry * f;
+    if (y > this.h - 78 && x > 44) y = this.h - 78 - r() * 18;
+    k.x = x; k.y = y; k.rot = r() * TAU;
+  }
+  hasKept(id) { return this.beach.some((k) => k.b.id === id); }
+  addKept(b, { from = null } = {}) {
+    if (this.hasKept(b.id)) return null;
+    const k = { b, t0: performance.now(), from };
+    this.placeKept(k);
+    k.sprite = bottleSprite(b.paper, this.scale * this.dpr, b.id);
+    this.beach.push(k);
+    return k;
+  }
+  removeKept(id) { this.beach = this.beach.filter((k) => k.b.id !== id); }
+  setBeach(list) {
+    const ids = new Set(list.map((b) => b.id));
+    this.beach = this.beach.filter((k) => ids.has(k.b.id));
+    for (const b of list) this.addKept(b);
+  }
+  hitBeach(x, y) {
+    const R = Math.max(26, 28 * this.scale);
+    for (let i = this.beach.length - 1; i >= 0; i--) {
+      const k = this.beach[i];
+      if (!k.from && Math.hypot(k.x - x, k.y - y) < R) return k;
+    }
+    return null;
+  }
+  keepCatch(b) {
+    const r = this.rod;
+    if (!r?.hooked || r.hooked.b.id !== b.id) { this.addKept(b); return; }
+    const o = r.hooked, g = this.rodG;
+    this.bottles = this.bottles.filter((x) => x !== o);
+    r.hooked = null; r.state = 'cast';
+    r.hx = g.tip.x + 30; r.hy = g.tip.y + 20; r.tx = r.hx + 40; r.ty = r.hy;
+    this.addKept(b, { from: { x: g.tip.x, y: g.tip.y } });
+  }
+  tossBack(b) {
+    const k = this.beach.find((x) => x.b.id === b.id);
+    this.removeKept(b.id);
+    if (!this.hasBottle(b.id)) this.addBottle(b, { from: k ? { x: k.x, y: k.y } : null });
   }
   removeBottle(id, { sink = true } = {}) {
     const o = this.getBottle(id);
@@ -291,9 +366,10 @@ export class Pond {
   // ---------- fishing rod & throwing ----------
   rodGeom() {
     const r = this.rod;
-    const base = { x: -6, y: this.h * 0.74 };
-    const len = clamp(Math.min(this.w, this.h) * 0.4, 140, 290);
-    const want = r.held ? clamp(Math.atan2(r.hy - base.y, r.hx - base.x), -1.25, 0.5) : -0.42;
+    const bg = this.beachG;
+    const base = { x: bg.rx * 0.2, y: bg.cy - bg.ry * 0.2 };
+    const len = clamp(Math.min(this.w, this.h) * 0.42, 150, 300);
+    const want = r.held ? clamp(Math.atan2(r.hy - base.y, r.hx - base.x), -1.5, 0.1) : -0.8;
     r.ang = r.ang == null ? want : r.ang + wrap(want - r.ang) * 0.12;
     return { base, len, tip: { x: base.x + Math.cos(r.ang) * len, y: base.y + Math.sin(r.ang) * len } };
   }
@@ -410,7 +486,7 @@ export class Pond {
       if (e.player && e.state === 'swim') {
         const m = L2 * 0.45;
         if (this.mini) { if (!this.inside(e.x, e.y, m)) { e.x += (cx - e.x) * 0.02; e.y += (cy - e.y) * 0.02; } }
-        else { e.x = clamp(e.x, m, this.w - m); e.y = clamp(e.y, m, this.h - m); }
+        else { e.x = clamp(e.x, m, this.w - m); e.y = clamp(e.y, m, this.h - m); const q = this.outOfBeach(e.x, e.y, m); e.x = q.x; e.y = q.y; }
       }
       e.phase += dt * (1.2 + e.v * 0.12);
       e.dist += e.v * dt;
@@ -547,6 +623,21 @@ export class Pond {
       }
     }
     const bs = BU * S * (this.mini ? 1.15 : 1);
+    for (const k of this.beach) {
+      let x = k.x, y = k.y, lift = 0;
+      if (k.from) {
+        const t = clamp((now - k.t0) / 1100, 0, 1);
+        x = k.from.x + (k.x - k.from.x) * t; y = k.from.y + (k.y - k.from.y) * t; lift = Math.sin(Math.PI * t);
+        if (t >= 1) k.from = null;
+      }
+      g.save();
+      g.fillStyle = 'rgba(90,70,40,0.22)';
+      g.beginPath(); g.ellipse(x + 3, y + 4, bs * 0.34, bs * 0.15, k.rot, 0, TAU); g.fill();
+      g.translate(x, y - lift * 80 * S);
+      g.rotate(k.rot + lift * 4);
+      g.drawImage(k.sprite.canvas, -bs * 0.5, -bs * 0.5, bs, bs);
+      g.restore();
+    }
     for (const o of this.bottles) {
       if (o.state === 'held') continue;
       const fade = o.state === 'sink' ? 1 - (now - o.t0) / 1400 : clamp((now - o.born) / 1200, 0, 1);

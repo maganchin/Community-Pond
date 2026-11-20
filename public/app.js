@@ -39,9 +39,10 @@ const pond = new Pond($('pond'), {
   seed: 7,
   onDuckTap: (duck) => openCard(duck, 'main'),
   onInteract: () => dismissHint(),
-  onBottleTap: () => toast('Pick up the fishing rod on the left bank to reel in that bottle.'),
+  onBottleTap: () => toast('Pick up the fishing rod on the beach to reel in that bottle.'),
   onBottleCatch: (b) => { catching = true; openCard(b, 'catch'); },
   onThrow: (p, aim) => throwBottle(p, aim),
+  onBeachTap: (b) => openCard(b, 'beach'),
   onRodChange: (held) => {
     $('rod-btn').textContent = held ? 'Put the rod down' : 'Pick up the rod';
     $('rod-btn').setAttribute('aria-pressed', held);
@@ -70,7 +71,7 @@ function ingestBottles(list) {
 }
 function pickBottle() {
   const shown = new Set(pond.bottles.map((o) => o.b.id));
-  const c = [...bpool.values()].filter((b) => !shown.has(b.id));
+  const c = [...bpool.values()].filter((b) => !shown.has(b.id) && !isSaved(b.id, 'bottle'));
   if (!c.length) return null;
   const fresh = c.filter(isNewDuck).sort((a, b) => b.createdAt - a.createdAt);
   if (fresh.length) return fresh[0];
@@ -198,7 +199,7 @@ async function refresh() {
     const newB = ingestBottles(bd.bottles);
     for (const id of bd.hidden || []) { bpool.delete(id); pond.removeBottle(id); }
     for (const b of newB) {
-      if (store.tossed.includes(b.id) || pond.hasBottle(b.id)) continue;
+      if (store.tossed.includes(b.id) || pond.hasBottle(b.id) || isSaved(b.id, 'bottle')) continue;
       if (floating().length >= bottleCap()) sinkOldBottle();
       recentlyShown.set(`b${b.id}`, Date.now());
       const o = pond.addBottle(b);
@@ -233,7 +234,7 @@ async function init() {
 const touch = matchMedia('(pointer: coarse)').matches;
 function showHint() {
   if (store.hintSeen) return;
-  $('hint').textContent = touch ? 'Tap the water to swim. Grab the rod on the left to fish for messages in bottles.' : 'Arrow keys or click to swim. Grab the rod on the left to fish for messages in bottles.';
+  $('hint').textContent = touch ? 'Tap the water to swim. Grab the rod on the beach to fish for messages in bottles.' : 'Arrow keys or click to swim. Grab the rod on the beach to fish for messages in bottles.';
   $('hint').hidden = false;
 }
 function dismissHint() {
@@ -298,8 +299,8 @@ function openCard(duck, context) {
   $('card').classList.toggle('letter', bottle);
   $('report-confirm').hidden = true;
   $('card-make').hidden = !duck.guest;
-  $('card-save').hidden = !bottle || context === 'mine';
-  $('card-remove').hidden = !bottle || context !== 'mine';
+  $('card-save').hidden = !bottle || context === 'beach';
+  $('card-remove').hidden = !bottle || context !== 'beach';
   $('card-fish').hidden = bottle;
   $('card-report').hidden = !bottle || own;
   if (duck.guest) {
@@ -326,13 +327,13 @@ function openCard(duck, context) {
     if (!$('card-wrap').hidden) cardAnim = requestAnimationFrame(tick);
   };
   cardAnim = requestAnimationFrame(tick);
-  (duck.guest ? $('card-make') : !bottle ? $('card-fish') : context !== 'mine' ? $('card-save') : $('card-remove')).focus({ preventScroll: true });
+  (duck.guest ? $('card-make') : !bottle ? $('card-fish') : context !== 'beach' ? $('card-save') : $('card-remove')).focus({ preventScroll: true });
 }
 function renderSaveButton() {
   const b = $('card-save');
   if (!openDuck || kindOf(openDuck) !== 'bottle') return;
   const saved = isSaved(openDuck.id, 'bottle');
-  b.textContent = saved ? 'Kept in your jar' : 'Keep this letter';
+  b.textContent = saved ? 'Kept on your beach' : 'Keep this letter';
   b.disabled = saved;
   b.classList.toggle('saved', saved);
 }
@@ -346,12 +347,13 @@ $('card-save').addEventListener('click', () => {
   const d = openDuck;
   if (!d || d.guest) return;
   if (kindOf(d) !== 'bottle' || d.id < 0) return;
-  if (isSaved(d.id, 'bottle')) { toast('That letter is already in your jar.'); return; }
+  if (isSaved(d.id, 'bottle')) { toast('That letter is already on your beach.'); return; }
   store.saved.push({ kind: 'bottle', id: d.id, paper: d.paper, message: d.message, createdAt: d.createdAt, starter: !!d.starter, savedAt: Date.now() });
   persist();
-  renderSaveButton();
-  renderMineCount();
-  toast('Tucked into your Keepsakes jar. The bottle goes back in the pond for others to find.');
+  if (catching) { catching = false; pond.keepCatch(d); }
+  else pond.setBeach(store.saved);
+  closeCard();
+  toast('Kept! It is on your beach now. Tap it there to reread it anytime.');
 });
 $('card-remove').addEventListener('click', () => {
   const d = openDuck;
@@ -359,9 +361,8 @@ $('card-remove').addEventListener('click', () => {
   store.saved = store.saved.filter((s) => !(s.id === d.id && kindOf(s) === 'bottle'));
   persist();
   closeCard();
-  renderMineCount();
-  renderMine();
-  toast('Taken out of your jar.');
+  pond.tossBack(d);
+  toast('Tossed back in for someone else to fish out.');
 });
 $('card-make').addEventListener('click', () => { closeCard(); openMaker(); });
 $('card-fish').addEventListener('click', () => { closeCard(); pond.setRod(true); });
@@ -378,9 +379,8 @@ $('report-yes').addEventListener('click', async () => {
     bpool.delete(d.id);
     if (catching) { catching = false; pond.releaseCatch({ keep: false }); }
     pond.removeBottle(d.id);
+    pond.removeKept(d.id);
     closeCard();
-    renderMineCount();
-    renderMine();
     toast('Thanks. That letter is reported and hidden for you.');
     return;
   }
@@ -542,55 +542,8 @@ $('letter-form').addEventListener('submit', (ev) => {
 $('aim-cancel').addEventListener('click', () => { cancelAim(); openLetter(); });
 $('rod-btn').addEventListener('click', () => { cancelAim(); pond.setRod(!pond.rod.held); });
 
-// ---------- Keepsakes jar ----------
-function renderMineCount() {
-  $('mine-count').textContent = store.saved.length;
-  $('open-mine').setAttribute('aria-label', `Keepsakes, ${store.saved.length} letter${store.saved.length === 1 ? '' : 's'} kept`);
-}
-function renderMine() {
-  if ($('mine-wrap').hidden) return;
-  const n = store.saved.length;
-  $('mine-empty').hidden = n > 0;
-  $('mine-sub').textContent = n ? `${n} letter${n === 1 ? '' : 's'} kept in this browser. Tap one to reread it.` : 'Letters you keep are saved in this browser.';
-  const list = $('jar-list');
-  list.innerHTML = '';
-  for (const b of [...store.saved].reverse()) {
-    const li = document.createElement('li');
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'keep';
-    btn.style.backgroundColor = PAPERS[b.paper]?.paper || PAPERS.cream.paper;
-    btn.setAttribute('aria-label', `Letter: ${b.message.slice(0, 60)}`);
-    const c = document.createElement('canvas');
-    c.setAttribute('aria-hidden', 'true');
-    const t = document.createElement('span');
-    t.textContent = b.message;
-    btn.append(c, t);
-    btn.addEventListener('click', () => openCard(b, 'mine'));
-    li.appendChild(btn);
-    list.appendChild(li);
-    requestAnimationFrame(() => drawBottlePortrait(c, b, { t: b.id }));
-  }
-}
-function openMine() {
-  closeCard();
-  closeMaker();
-  closeLetter();
-  cancelAim();
-  pond.setRod(false);
-  $('toast').classList.remove('show');
-  $('mine-wrap').hidden = false;
-  pond.stop();
-  renderMine();
-  $('close-mine').focus({ preventScroll: true });
-}
-function closeMine() {
-  $('mine-wrap').hidden = true;
-  closeCard();
-  pond.start();
-}
-$('open-mine').addEventListener('click', openMine);
-$('close-mine').addEventListener('click', closeMine);
+// ---------- beach of kept bottles ----------
+function renderMineCount() { pond.setBeach(store.saved); }
 
 // ---------- keyboard ----------
 const ARROWS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
@@ -601,10 +554,9 @@ window.addEventListener('keydown', (e) => {
     else if (!$('letter-wrap').hidden) closeLetter();
     else if (pond.aim) cancelAim();
     else if (pond.rod?.held) pond.setRod(false);
-    else if (!$('mine-wrap').hidden) closeMine();
     return;
   }
-  const busy = !$('card-wrap').hidden || !$('maker-wrap').hidden || !$('letter-wrap').hidden || !$('mine-wrap').hidden;
+  const busy = !$('card-wrap').hidden || !$('maker-wrap').hidden || !$('letter-wrap').hidden;
   if (busy || e.target.closest?.('textarea, input')) return;
   if (ARROWS.includes(e.key)) {
     e.preventDefault();
@@ -620,7 +572,6 @@ window.addEventListener('keyup', (e) => pond.keys.delete(e.key));
 window.addEventListener('blur', () => pond.keys.clear());
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) pond.stop();
-  else if (!$('mine-wrap').hidden) return;
   else { pond.start(); refresh(); }
 });
 

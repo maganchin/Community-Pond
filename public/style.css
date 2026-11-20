@@ -26,7 +26,7 @@ button, textarea { font: inherit; color: inherit; }
 .edge { position: fixed; z-index: 5; display: flex; gap: 10px; align-items: center; pointer-events: none; }
 .edge > * { pointer-events: auto; }
 .top-left { flex-direction: column; align-items: flex-start; top: calc(10px + env(safe-area-inset-top)); left: calc(10px + env(safe-area-inset-left)); }
-.top-right { top: calc(10px + env(safe-area-inset-top)); right: calc(10px + env(safe-area-inset-right)); }
+.top-right { flex-direction: column; align-items: flex-end; top: calc(10px + env(safe-area-inset-top)); right: calc(10px + env(safe-area-inset-right)); }
 .bottom { bottom: calc(14px + env(safe-area-inset-bottom)); left: 0; right: 0; justify-content: center; flex-wrap: wrap; padding: 0 10px; }
 
 .title-tag {
@@ -55,13 +55,13 @@ button, textarea { font: inherit; color: inherit; }
 #find-new { background-color: #fff4ce; border-color: var(--amber); color: var(--amber); }
 
 .hint {
-  position: fixed; z-index: 4; left: 50%; bottom: calc(78px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+  position: fixed; z-index: 4; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom)); transform: translateX(-50%);
   margin: 0; padding: 6px 14px 4px; font-size: 18px; text-align: center; max-width: min(92vw, 460px);
   background: rgba(246, 238, 219, 0.82); border-radius: 14px; pointer-events: none; transition: opacity 0.8s ease;
 }
 .hint.gone { opacity: 0; }
 .toast {
-  position: fixed; z-index: 30; left: 50%; top: calc(118px + env(safe-area-inset-top)); transform: translate(-50%, -10px);
+  position: fixed; z-index: 30; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom)); transform: translate(-50%, 10px);
   padding: 8px 16px 6px; font-size: 19px; background: var(--paper); border: 1.5px solid var(--ink); border-radius: 14px;
   opacity: 0; transition: opacity 0.4s ease, transform 0.4s ease; pointer-events: none; max-width: 90vw; text-align: center;
 }
@@ -148,7 +148,7 @@ textarea.lined {
   background: rgba(246, 238, 219, 0.95); border: 1.5px solid var(--ink); border-radius: 16px;
 }
 .aim-bar p { margin: 0; font-size: 18px; }
-body.aiming .edge.bottom, body.aiming .hint, body.fishing #find-new { display: none !important; }
+body.aiming .edge.top-right, body.aiming .hint, body.fishing #find-new { display: none !important; }
 
 .jar { position: relative; flex: 1 1 auto; width: min(100%, 560px); min-height: 0; display: flex; flex-direction: column; align-items: center; margin-top: 4px; }
 .jar-lid {
