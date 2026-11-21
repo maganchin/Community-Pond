@@ -68,10 +68,10 @@ if (db.prepare('SELECT COUNT(*) AS n FROM ducks WHERE starter = 1').get().n === 
 }
 
 const STARTER_BOTTLES = [
-  ['cream', 0.22, 0.3, 'Dear stranger, I tossed this in on a rainy Tuesday. I hope wherever you are, it is a little sunnier. Keep going.'],
-  ['rose', 0.76, 0.26, 'Whoever finds this: you are allowed to start over as many times as you need. Ducks do it every morning.'],
+  ['cream', 0.22, 0.3, 'About money: future you is counting on present you. Start small, start now, and let time do the heavy lifting. A little set aside every month grows quietly into freedom. Nobody regrets starting early. They only regret waiting.'],
+  ['rose', 0.76, 0.26, 'About love: the right one doesn\'t make you guess. You feel calmer around them, not smaller. You can be messy, boring and honest, and they stay curious about you. If it feels like home and like growing at the same time, hold on.'],
   ['mint', 0.3, 0.78, 'Today I noticed the light on the water and felt calm for the first time in a while. Passing that calm to you.'],
-  ['sky', 0.7, 0.7, 'A small list of good things: warm bread, dogs who lean on you, the first sip of tea, strangers who write back.'],
+  ['sky', 0.7, 0.7, 'About work: change is scary, but staying the same is scarier. A year from now you\'ll wish you\'d started today. You don\'t need the whole plan, just the next brave step. Take it.'],
 ];
 if (db.prepare('SELECT COUNT(*) AS n FROM bottles WHERE starter = 1').get().n === 0) {
   const ins = db.prepare('INSERT INTO bottles (paper, x, y, message, starter, created_at) VALUES (?, ?, ?, ?, 1, ?)');
