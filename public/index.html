@@ -28,6 +28,13 @@
     <p>Tap or drag on the pond to throw your bottle</p>
     <button id="aim-cancel" class="btn paper small" type="button">Cancel</button>
   </div>
+  <div id="reel-bar" class="aim-bar reel-bar" hidden>
+    <div class="reel-info">
+      <p id="reel-text">A bottle bit! Reel it in</p>
+      <span class="reel-meter" aria-hidden="true"><i id="reel-fill"></i></span>
+    </div>
+    <button id="reel-btn" class="btn ink" type="button">Reel</button>
+  </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <!-- message card -->
@@ -36,6 +43,7 @@
       <button class="close" type="button" data-close aria-label="Close">&times;</button>
       <canvas id="card-duck" class="card-duck" width="120" height="120" aria-hidden="true"></canvas>
       <p id="card-kicker" class="kicker"></p>
+      <button id="card-pop" class="btn ink" type="button">Pop the cork</button>
       <p id="card-message" class="message"></p>
       <p id="card-meta" class="meta"></p>
       <div id="card-actions" class="actions">
@@ -73,6 +81,8 @@
           </fieldset>
         </div>
       </div>
+      <label for="duck-name" class="label">Name your duck</label>
+      <input id="duck-name" class="name-input" type="text" maxlength="20" autocomplete="off" placeholder="e.g. Puddles">
       <p class="note">Your duck joins the shared pond so everyone can see you swim. Messages travel in bottles.</p>
       <p id="maker-error" class="error" role="alert"></p>
       <button id="release" class="btn ink wide" type="submit">Add my duck to the pond</button>
@@ -91,7 +101,6 @@
       <label for="letter" class="label">Dear stranger,</label>
       <textarea id="letter" class="lined" rows="6" maxlength="280" placeholder="Write something for whoever fishes this out…"></textarea>
       <div class="row-between">
-        <span class="note">Plain text, shown publicly. No names or addresses.</span>
         <span id="letter-count" class="note">0/280</span>
       </div>
       <p id="letter-error" class="error" role="alert"></p>

@@ -135,6 +135,20 @@ export const sound = {
     g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5 * size, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
     src.connect(f).connect(g).connect(master); src.start(t, rand(0, 3)); src.stop(t + 0.7);
   },
+  tick() {
+    if (!enabled || !ctx || ctx.state !== 'running') return;
+    const t = ctx.currentTime, src = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+    src.buffer = noise; f.type = 'bandpass'; f.Q.value = 6; f.frequency.value = rand(2600, 3400);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.25, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+    src.connect(f).connect(g).connect(master); src.start(t, rand(0, 3)); src.stop(t + 0.06);
+  },
+  pop() {
+    if (!enabled || !ctx || ctx.state !== 'running') return;
+    const t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(900, t); o.frequency.exponentialRampToValueAtTime(220, t + 0.09);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.6, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
+    o.connect(g).connect(master); o.start(t); o.stop(t + 0.16);
+  },
 };
 
 document.addEventListener('visibilitychange', () => {

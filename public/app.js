@@ -41,7 +41,10 @@ const pond = new Pond($('pond'), {
   onDuckTap: (duck) => openCard(duck, 'main'),
   onInteract: () => dismissHint(),
   onBottleTap: () => toast('Pick up the fishing rod on the beach to reel in that bottle.'),
-  onBottleCatch: (b) => { catching = true; sound.splash(0.7); openCard(b, 'catch'); },
+  onBottleCatch: (b) => { endReel(); catching = true; sound.splash(0.7); openCard(b, 'catch'); },
+  onHook: () => startReel(),
+  onEscape: () => { endReel(); toast('It slipped off the hook! Drag the line back to it and reel faster.'); },
+  onReel: (p) => { sound.tick(); $('reel-fill').style.width = `${Math.round(p * 100)}%`; },
   onThrow: (p, aim) => throwBottle(p, aim),
   onBeachTap: (b) => openCard(b, 'beach'),
   onRodChange: (held) => {
@@ -53,6 +56,40 @@ const pond = new Pond($('pond'), {
   },
 });
 let catching = false;
+
+// ---------- reeling ----------
+let reelTimer = 0, reelHold = 0;
+function startReel() {
+  sound.splash(0.5);
+  document.body.classList.add('reeling');
+  $('reel-text').textContent = touch ? 'A bottle bit! Tap or hold Reel' : 'A bottle bit! Tap Reel or press space';
+  $('reel-fill').style.width = '0%';
+  $('reel-bar').hidden = false;
+  clearInterval(reelTimer);
+  reelTimer = setInterval(() => {
+    const p = pond.reelProgress;
+    if (p == null) return;
+    $('reel-fill').style.width = `${Math.round(p * 100)}%`;
+  }, 100);
+}
+function endReel() {
+  clearInterval(reelTimer); clearInterval(reelHold);
+  document.body.classList.remove('reeling');
+  $('reel-bar').hidden = true;
+}
+const stopHold = () => clearInterval(reelHold);
+$('reel-btn').addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  try { $('reel-btn').setPointerCapture(e.pointerId); } catch {}
+  pond.reel(0.1);
+  clearInterval(reelHold);
+  reelHold = setInterval(() => pond.reel(0.045), 140);
+});
+['pointerup', 'touchend', 'touchcancel'].forEach((t) => $('reel-btn').addEventListener(t, stopHold));
+window.addEventListener('pointerup', stopHold);
+$('reel-btn').addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse') stopHold(); });
+$('reel-btn').addEventListener('contextmenu', (e) => e.preventDefault());
+$('reel-btn').addEventListener('click', (e) => { if (e.detail === 0) pond.reel(0.1); });
 
 // ---------- bottles ----------
 const bpool = new Map();
@@ -315,6 +352,10 @@ function openCard(duck, context) {
   const bottle = kindOf(duck) === 'bottle';
   const own = bottle ? store.tossed.includes(duck.id) : store.released.includes(duck.id);
   $('card').classList.toggle('letter', bottle);
+  sealed = bottle && context === 'catch';
+  popAt = 0;
+  $('card').classList.toggle('sealed', sealed);
+  $('card').classList.remove('opened');
   $('report-confirm').hidden = true;
   $('card-make').hidden = !duck.guest;
   $('card-save').hidden = !bottle || context === 'beach';
@@ -330,10 +371,11 @@ function openCard(duck, context) {
     $('card-message').textContent = duck.message;
     $('card-meta').textContent = duck.starter ? 'Bobbing here since the pond began' : `Tossed in ${ago(duck.createdAt)}`;
   } else {
-    $('card-kicker').textContent = describe(duck);
+    $('card-kicker').textContent = duck.name || describe(duck);
     $('card-message').textContent = own ? 'This is you, paddling around the pond.' : 'A fellow visitor, paddling around the pond. Their messages are out there in the bottles.';
-    $('card-meta').textContent = duck.starter ? 'One of the first ducks in the pond' : `Joined ${ago(duck.createdAt)}`;
+    $('card-meta').textContent = `${duck.name ? `${describe(duck)} · ` : ''}${duck.starter ? 'One of the first ducks in the pond' : `Joined ${ago(duck.createdAt)}`}`;
   }
+  if (sealed) $('card-kicker').textContent = 'You reeled in a bottle! Pop the cork to read it';
   renderSaveButton();
   cardOpenedAt = performance.now();
   $('card-wrap').hidden = false;
@@ -341,13 +383,27 @@ function openCard(duck, context) {
   cancelAnimationFrame(cardAnim);
   const t0 = performance.now();
   const tick = (t) => {
-    if (bottle) drawBottlePortrait(c, duck, { t: (t - t0) / 1000 });
+    if (bottle) drawBottlePortrait(c, duck, { t: (t - t0) / 1000, pop: sealed ? -1 : popAt ? Math.min(1, (t - popAt) / 900) : 1 });
     else drawDuckPortrait(c, duck, { heading: -Math.PI / 2 + Math.sin((t - t0) / 1400) * 0.25, phase: (t - t0) / 600 });
     if (!$('card-wrap').hidden) cardAnim = requestAnimationFrame(tick);
   };
   cardAnim = requestAnimationFrame(tick);
-  (duck.guest ? $('card-make') : !bottle ? $('card-fish') : context !== 'beach' ? $('card-save') : $('card-remove')).focus({ preventScroll: true });
+  (sealed ? $('card-pop') : duck.guest ? $('card-make') : !bottle ? $('card-fish') : context !== 'beach' ? $('card-save') : $('card-remove')).focus({ preventScroll: true });
 }
+let sealed = false, popAt = 0;
+function popCork() {
+  if (!sealed) return;
+  sealed = false;
+  popAt = performance.now();
+  sound.pop();
+  const own = store.tossed.includes(openDuck.id);
+  $('card-kicker').textContent = own ? 'Your message in a bottle' : 'You fished out a message in a bottle';
+  $('card').classList.remove('sealed');
+  $('card').classList.add('opened');
+  $('card-save').focus({ preventScroll: true });
+}
+$('card-pop').addEventListener('click', popCork);
+$('card-duck').addEventListener('click', popCork);
 function renderSaveButton() {
   const b = $('card-save');
   if (!openDuck || kindOf(openDuck) !== 'bottle') return;
@@ -497,11 +553,12 @@ $('maker').addEventListener('submit', async (ev) => {
   btn.disabled = true;
   btn.textContent = 'Releasing…';
   try {
-    const { duck } = await api('/api/ducks', { method: 'POST', body: JSON.stringify({ color: draft.color, accessory: draft.accessory }) });
+    const { duck } = await api('/api/ducks', { method: 'POST', body: JSON.stringify({ color: draft.color, accessory: draft.accessory, name: $('duck-name').value.trim() }) });
     ingest([duck]);
     store.released.push(duck.id);
     persist();
     closeMaker();
+    $('duck-name').value = '';
     // your new duck swims in from the bottom and becomes the duck you steer
     const old = pond.player;
     if (old) { if (old.duck.guest) pond.remove(0); else pond.setPlayer(null); old.player = false; }
@@ -576,6 +633,11 @@ window.addEventListener('keydown', (e) => {
     else if (!$('letter-wrap').hidden) closeLetter();
     else if (pond.aim) cancelAim();
     else if (pond.rod?.held) pond.setRod(false);
+    return;
+  }
+  if (e.key === ' ' && pond.reelProgress != null && !e.target.closest?.('textarea, input')) {
+    e.preventDefault();
+    if (!e.repeat || Math.random() < 0.5) pond.reel(e.repeat ? 0.045 : 0.1);
     return;
   }
   const busy = !$('card-wrap').hidden || !$('maker-wrap').hidden || !$('letter-wrap').hidden;

@@ -1,7 +1,7 @@
 // A painted pond: background layer, duck layer (ripples, shadows, bodies, feet), accessory layer (hats, halos, labels).
 import { paintPond, rng, wash } from './painter.js';
 import { duckSprite, footSprite, accessorySprite, SPRITE_UNITS, L, W } from './duckart.js';
-import { bottleSprite, BU } from './bottleart.js';
+import { bottleSprite, drawCork, BU } from './bottleart.js';
 
 const TAU = Math.PI * 2;
 const wrap = (a) => ((a + Math.PI) % TAU + TAU) % TAU - Math.PI;
@@ -10,9 +10,9 @@ const NEW_MS = 24 * 3600 * 1000;
 const NOKEYS = new Set();
 
 export class Pond {
-  constructor(root, { mini = false, seed = 7, onDuckTap = () => {}, onWaterTap = () => {}, onInteract = () => {}, onBottleTap = () => {}, onBottleCatch = () => {}, onThrow = () => {}, onRodChange = () => {}, onBeachTap = () => {} } = {}) {
+  constructor(root, { mini = false, seed = 7, onDuckTap = () => {}, onWaterTap = () => {}, onInteract = () => {}, onBottleTap = () => {}, onBottleCatch = () => {}, onThrow = () => {}, onRodChange = () => {}, onBeachTap = () => {}, onHook = () => {}, onEscape = () => {}, onReel = () => {} } = {}) {
     this.root = root;
-    Object.assign(this, { onBottleTap, onBottleCatch, onThrow, onRodChange, onBeachTap });
+    Object.assign(this, { onBottleTap, onBottleCatch, onThrow, onRodChange, onBeachTap, onHook, onEscape, onReel });
     this.bottles = [];
     this.beach = [];
     this.beachG = null;
@@ -183,7 +183,7 @@ export class Pond {
       state = 'enter';
     }
     const e = { duck, x, y, h, v: 0, turn: 0, state, tx, ty, phase: r() * TAU, dist: 0, idle: 0, born: performance.now(),
-      cruise: (8 + r() * 6), player };
+      cruise: (8 + r() * 6), player, sz: Math.min(1.3, Math.max(0.75, Number(duck.size) || 1)) };
     this.refreshSprites(e);
     this.entities.push(e);
     if (player) this.player = e;
@@ -216,7 +216,7 @@ export class Pond {
     for (const e of this.entities) {
       if (e.state === 'leave') continue;
       const d = Math.hypot(e.x - x, e.y - y);
-      if (d < rad && d < bd) { best = e; bd = d; }
+      if (d < rad * Math.max(1, e.sz) && d < bd) { best = e; bd = d; }
     }
     return best;
   }
@@ -228,6 +228,7 @@ export class Pond {
       const p = this.local(ev);
       down = { ...p, t: performance.now(), drag: false, id: ev.pointerId };
       el.setPointerCapture?.(ev.pointerId);
+      if (this.rod?.state === 'fight') { this.reel(0.08); return; }
       if (this.rod?.held && !this.hitRod(p)) { this.rod.tx = p.x; this.rod.ty = p.y; }
       if (this.aim) { this.aim.x = p.x; this.aim.y = p.y; }
     });
@@ -384,6 +385,15 @@ export class Pond {
     const near = Math.hypot(p.x - (base.x + dx * t), p.y - (base.y + dy * t)) < 24;
     return near || (!this.rod.held && Math.hypot(p.x - this.rod.hx, p.y - this.rod.hy) < 24);
   }
+  reel(k = 0.1) {
+    const r = this.rod;
+    if (!r || r.state !== 'fight') return;
+    r.pull = Math.min(1, r.pull + k);
+    r.lastReel = performance.now();
+    this.onReel(r.pull);
+  }
+  get reelProgress() { return this.rod?.state === 'fight' ? this.rod.pull : null; }
+
   setRod(held) {
     const r = this.rod;
     if (!r || r.held === held || r.state !== 'cast') return;
@@ -540,14 +550,34 @@ export class Pond {
         }
         for (const o of this.bottles) {
           if (o.state !== 'float' || now < o.cool) continue;
-          if (Math.hypot(o.x - r.hx, o.y - r.hy) < 24 * S + 6) {
-            r.hooked = o; r.state = 'reel'; r.t0 = now; r.fx = r.hx; r.fy = r.hy; o.state = 'hooked';
+          const dist = Math.hypot(o.x - r.hx, o.y - r.hy);
+          if (o === r.escaped) { if (dist > 70 * S) r.escaped = null; else continue; }
+          if (dist < 24 * S + 6) {
+            r.hooked = o; r.state = 'fight'; r.pull = 0; r.t0 = now; r.lastReel = now; r.fx = r.hx; r.fy = r.hy; o.state = 'hooked';
             this.splash(o.x, o.y, 1);
+            this.onHook(o.b);
             break;
           }
         }
+      } else if (r.state === 'fight') {
+        const o = r.hooked;
+        if (r.pull < 1) r.pull = Math.max(0, r.pull - dt * 0.06);
+        const e = r.pull * r.pull * (3 - 2 * r.pull), tug = Math.sin(now / 110) * Math.sin(now / 470) * 5 * S * (1 - r.pull * 0.6);
+        const gx = r.fx + (g.tip.x + 18 - r.fx) * e, gy = r.fy + (g.tip.y + 26 * S - r.fy) * e;
+        const ox = r.hx, oy = r.hy;
+        r.hx += (gx - r.hx) * Math.min(1, dt * 6) + tug * dt * 6; r.hy += (gy - r.hy) * Math.min(1, dt * 6) - tug * dt * 3;
+        o.x = r.hx; o.y = r.hy + 4 * S; o.rot += Math.sin(now / 200) * dt;
+        r.trail = (r.trail || 0) + Math.hypot(r.hx - ox, r.hy - oy) + Math.abs(tug) * dt;
+        if (r.trail > 10 * S) { r.trail = 0; this.ripples.push({ x: r.hx, y: r.hy, h: Math.random() * TAU, t0: now, seed: Math.random() * 100, life: 2600, k: 0.8 }); }
+        if (r.pull >= 1) { r.state = 'reel'; r.t0 = now; r.dur = 600; r.fx = r.hx; r.fy = r.hy; }
+        else if (now - r.lastReel > 7000 && r.pull < 0.2) {
+          r.hooked = null; r.state = 'cast'; r.tx = r.hx; r.ty = r.hy; r.escaped = o;
+          o.state = 'float'; o.cool = now + 3000; o.ax = o.x / this.w; o.ay = o.y / this.h;
+          this.splash(o.x, o.y, 1);
+          this.onEscape(o.b);
+        }
       } else if (r.state === 'reel') {
-        const t = clamp((now - r.t0) / 1500, 0, 1), e = t * t * (3 - 2 * t);
+        const t = clamp((now - r.t0) / (r.dur || 1500), 0, 1), e = t * t * (3 - 2 * t);
         const ox = r.hx, oy = r.hy;
         r.hx = r.fx + (g.tip.x + 18 - r.fx) * e; r.hy = r.fy + (g.tip.y + 26 * S - r.fy) * e;
         const o = r.hooked;
@@ -672,6 +702,7 @@ export class Pond {
       g.save();
       g.translate(e.x, e.y);
       g.rotate(e.h + Math.PI / 2);
+      g.scale(e.sz, e.sz);
       const kick = clamp(e.v / (12 * S), 0, 1);
       [-1, 1].forEach((side, i) => {
         g.save();
@@ -702,6 +733,7 @@ export class Pond {
       a.save();
       a.translate(e.x, e.y);
       a.rotate(e.h + Math.PI / 2);
+      a.scale(e.sz, e.sz);
       a.drawImage(e.acc.canvas, -size / 2, -size / 2, size, size);
       a.restore();
     }
@@ -710,6 +742,7 @@ export class Pond {
     a.textBaseline = 'middle';
     const tag = (x, y, text, ink, paper) => {
       const tw = a.measureText(text).width + 12;
+      x = clamp(x, tw / 2 + 4, Math.max(tw / 2 + 4, this.w - tw / 2 - 4));
       a.fillStyle = paper;
       a.beginPath();
       a.roundRect ? a.roundRect(x - tw / 2, y - 11, tw, 22, 9) : a.rect(x - tw / 2, y - 11, tw, 22);
@@ -719,16 +752,19 @@ export class Pond {
       a.fillText(text, x, y + 1);
     };
     for (const e of this.entities) {
-      const off = L * S * 0.78;
-      if (e.player && !this.mini) tag(e.x, e.y + off, 'you', '#26315a', 'rgba(246,238,219,0.92)');
-      else if (this.isNew(e.duck)) tag(e.x, e.y - off, 'new', '#7a4b12', 'rgba(255,244,206,0.95)');
+      const off = L * S * 0.78 * e.sz;
+      if (e.player && !this.mini) tag(e.x, e.y + off, e.duck.name ? `you · ${e.duck.name}` : 'you', '#26315a', 'rgba(246,238,219,0.92)');
+      else {
+        if (e.duck.name) tag(e.x, e.y + off, e.duck.name, '#26315a', 'rgba(246,238,219,0.8)');
+        if (this.isNew(e.duck)) tag(e.x, e.y - off, 'new', '#7a4b12', 'rgba(255,244,206,0.95)');
+      }
     }
     for (const o of this.bottles) if (o.state === 'float' && this.isNew(o.b)) tag(o.x, o.y - bs * 0.48, 'new', '#7a4b12', 'rgba(255,244,206,0.95)');
     if (this.rod && this.rodG) {
       const { base, tip } = this.rodG, r = this.rod;
       a.strokeStyle = 'rgba(30,32,48,0.75)'; a.lineWidth = 1;
       a.beginPath(); a.moveTo(tip.x, tip.y);
-      a.quadraticCurveTo((tip.x + r.hx) / 2, Math.max(tip.y, r.hy) + (r.state === 'reel' ? 4 : 18) * S, r.hx, r.hy);
+      a.quadraticCurveTo((tip.x + r.hx) / 2, Math.max(tip.y, r.hy) + (r.state === 'reel' || r.state === 'fight' ? 4 : 18) * S, r.hx, r.hy);
       a.stroke();
       const dx = tip.x - base.x, dy = tip.y - base.y, len = Math.hypot(dx, dy), nx = -dy / len, ny = dx / len;
       const seg = (t0, t1, w0, w1, fill) => {
@@ -841,7 +877,7 @@ export function drawDuckPortrait(canvas, duck, { heading = -Math.PI / 2, phase =
   if (acc) g.drawImage(acc.canvas, -size / 2, -size / 2, size, size);
 }
 
-export function drawBottlePortrait(canvas, b, { t = 0 } = {}) {
+export function drawBottlePortrait(canvas, b, { t = 0, pop = -1 } = {}) {
   drawDuckPortrait(canvas, null);
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const cssW = canvas.clientWidth || 120, cssH = canvas.clientHeight || 120;
@@ -850,5 +886,14 @@ export function drawBottlePortrait(canvas, b, { t = 0 } = {}) {
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
   g.translate(cssW / 2, cssH / 2 + Math.sin(t * 2) * 2);
   g.rotate(-0.5 + Math.sin(t) * 0.12);
-  g.drawImage(bottleSprite(b.paper, S * dpr, b.id > 0 ? b.id : 1).canvas, -size / 2, -size / 2, size, size);
+  g.drawImage(bottleSprite(b.paper, S * dpr, b.id > 0 ? b.id : 1, pop < 0).canvas, -size / 2, -size / 2, size, size);
+  if (pop >= 0 && pop < 1) {
+    const k = size / BU;
+    g.save();
+    g.scale(k, k);
+    g.globalAlpha = 1 - Math.max(0, pop - 0.6) / 0.4;
+    g.translate(22, 0); g.rotate(pop * 7); g.translate(-22, 0);
+    drawCork(g, pop * 26, -pop * 34 + pop * pop * 14);
+    g.restore();
+  }
 }

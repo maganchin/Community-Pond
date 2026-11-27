@@ -25,8 +25,8 @@ function glassPath(r) {
   return p;
 }
 
-export function bottleSprite(paper, scale, seed = 1) {
-  const key = `${paper}|${scale.toFixed(2)}|${seed % 6}`;
+export function bottleSprite(paper, scale, seed = 1, corked = true) {
+  const key = `${paper}|${scale.toFixed(2)}|${seed % 6}|${corked ? 1 : 0}`;
   if (cache.has(key)) return cache.get(key);
   const px = Math.max(8, Math.ceil(BU * scale));
   const c = document.createElement('canvas');
@@ -68,20 +68,29 @@ export function bottleSprite(paper, scale, seed = 1) {
   g.beginPath(); g.moveTo(-16, -5.6); g.quadraticCurveTo(-4, -7, 8, -6.4); g.stroke();
   g.lineWidth = 0.9;
   g.beginPath(); g.moveTo(13.5, -2.6); g.lineTo(18, -2.4); g.stroke();
-  // cork
-  g.fillStyle = '#b8895a';
-  g.beginPath(); g.roundRect ? g.roundRect(19, -3.6, 6.5, 7.2, 1.6) : g.rect(19, -3.6, 6.5, 7.2); g.fill();
-  g.fillStyle = 'rgba(90,55,25,0.5)';
-  for (let i = 0; i < 4; i++) { g.beginPath(); g.arc(20.5 + r() * 4, -2.2 + r() * 4.4, 0.45, 0, Math.PI * 2); g.fill(); }
+  if (corked) drawCork(g, 0, 0, r);
+  else { r(); r(); r(); r(); r(); r(); r(); r(); }
   // imperfect pencil outline, drawn twice
   g.strokeStyle = 'rgba(29,42,92,0.55)';
   g.lineWidth = 0.9;
   g.stroke(glass);
   g.save(); g.translate(0.4, -0.3); g.globalAlpha = 0.5; g.stroke(glassPath(r)); g.restore();
-  g.strokeStyle = 'rgba(70,40,20,0.6)'; g.lineWidth = 0.7;
-  g.strokeRect(19, -3.6, 6.5, 7.2);
+  if (corked) { g.strokeStyle = 'rgba(70,40,20,0.6)'; g.lineWidth = 0.7; g.strokeRect(19, -3.6, 6.5, 7.2); }
   const out = { canvas: c };
   cache.set(key, out);
   if (cache.size > 120) cache.delete(cache.keys().next().value);
   return out;
+}
+
+// Cork in bottle units (the sprite is BU wide); dx/dy shift it for the pop animation.
+export function drawCork(g, dx = 0, dy = 0, r = rng(5)) {
+  g.save();
+  g.translate(dx, dy);
+  g.fillStyle = '#b8895a';
+  g.beginPath(); g.roundRect ? g.roundRect(19, -3.6, 6.5, 7.2, 1.6) : g.rect(19, -3.6, 6.5, 7.2); g.fill();
+  g.fillStyle = 'rgba(90,55,25,0.5)';
+  for (let i = 0; i < 4; i++) { g.beginPath(); g.arc(20.5 + r() * 4, -2.2 + r() * 4.4, 0.45, 0, Math.PI * 2); g.fill(); }
+  g.strokeStyle = 'rgba(70,40,20,0.6)'; g.lineWidth = 0.7;
+  g.strokeRect(19, -3.6, 6.5, 7.2);
+  g.restore();
 }
