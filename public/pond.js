@@ -371,7 +371,7 @@ export class Pond {
     const bg = this.beachG;
     const base = { x: bg.rx * 0.2, y: bg.cy - bg.ry * 0.2 };
     const len = clamp(Math.min(this.w, this.h) * 0.42, 150, 300);
-    const want = r.held ? clamp(Math.atan2(r.hy - base.y, r.hx - base.x), -1.5, 0.1) : -0.8;
+    const want = r.held && r.state !== 'cast' ? -1.1 : r.held ? clamp(Math.atan2(r.hy - base.y, r.hx - base.x), -1.5, 0.1) : -0.8;
     r.ang = r.ang == null ? want : r.ang + wrap(want - r.ang) * 0.12;
     return { base, len, tip: { x: base.x + Math.cos(r.ang) * len, y: base.y + Math.sin(r.ang) * len } };
   }
