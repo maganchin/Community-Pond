@@ -10,24 +10,15 @@ const ACCESSORIES = ['none', 'daisy', 'bow', 'sunhat', 'scarf', 'lilyleaf', 'bea
 const MAX_LETTER = 280;
 const PAPERS = ['cream', 'rose', 'mint', 'sky'];
 
-const STARTER_BOTTLES = [
-  ['cream', 0.22, 0.3, 'About money: future you is counting on present you. Start small, start now, and let time do the heavy lifting. A little set aside every month grows quietly into freedom. Nobody regrets starting early. They only regret waiting.'],
-  ['rose', 0.76, 0.26, 'About love: the right one doesn\'t make you guess. You feel calmer around them, not smaller. You can be messy, boring and honest, and they stay curious about you. If it feels like home and like growing at the same time, hold on.'],
-  ['mint', 0.3, 0.78, 'Today I noticed the light on the water and felt calm for the first time in a while. Passing that calm to you.'],
-  ['sky', 0.7, 0.7, 'About work: change is scary, but staying the same is scarier. A year from now you\'ll wish you\'d started today. You don\'t need the whole plan, just the next brave step. Take it.'],
-];
 async function setup() {
   await db.init();
-  const base = Date.now() - 7 * 24 * 3600 * 1000;
-  if (Number((await db.get('SELECT COUNT(*) AS n FROM bottles WHERE starter = 1')).n) === 0) {
-    for (const [i, [p, x, y, m]] of STARTER_BOTTLES.entries()) await db.insert('INSERT INTO bottles (paper, x, y, message, starter, created_at) VALUES (?, ?, ?, ?, 1, ?)', [p, x, y, m, base + i * 60000]);
-  }
 }
 let ready = null;
 const whenReady = () => (ready ||= setup().catch((e) => { ready = null; throw e; }));
 const publicBottle = (b) => ({ id: b.id, message: b.message, paper: b.paper, x: b.x, y: b.y, starter: !!b.starter, createdAt: b.created_at });
 
-const publicDuck = (d) => ({ id: d.id, color: d.color, accessory: d.accessory, starter: !!d.starter, createdAt: d.created_at });
+const publicDuck = (d) => ({ id: d.id, name: d.name || '', size: Number(d.size) || 1, color: d.color, accessory: d.accessory, starter: !!d.starter, createdAt: d.created_at });
+const MAX_NAME = 20;
 
 function cleanMessage(raw) {
   if (typeof raw !== 'string') return '';
@@ -73,10 +64,12 @@ app.get('/api/ducks/:id', wrap(async (req, res) => {
 
 app.post('/api/ducks', wrap(async (req, res) => {
   const { color, accessory } = req.body || {};
+  const name = [...cleanMessage((req.body || {}).name).replace(/\s+/g, ' ')].slice(0, MAX_NAME).join('');
+  const size = Math.round((0.8 + Math.random() * 0.45) * 100) / 100;
   if (!COLORS.includes(color)) return res.status(400).json({ error: 'Pick a duck color.' });
   if (!ACCESSORIES.includes(accessory)) return res.status(400).json({ error: 'Pick an accessory.' });
   if (rateLimited(req.ip)) return res.status(429).json({ error: 'The pond needs a moment. Try releasing again in a few minutes.' });
-  const id = await db.insert('INSERT INTO ducks (color, accessory, message, created_at) VALUES (?, ?, ?, ?)', [color, accessory, '', Date.now()]);
+  const id = await db.insert('INSERT INTO ducks (color, accessory, message, name, size, created_at) VALUES (?, ?, ?, ?, ?, ?)', [color, accessory, '', name, size, Date.now()]);
   const d = await db.get('SELECT * FROM ducks WHERE id = ?', [id]);
   res.status(201).json({ duck: publicDuck(d) });
 }));
