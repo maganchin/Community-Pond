@@ -10,18 +10,6 @@ const ACCESSORIES = ['none', 'daisy', 'bow', 'sunhat', 'scarf', 'lilyleaf', 'bea
 const MAX_LETTER = 280;
 const PAPERS = ['cream', 'rose', 'mint', 'sky'];
 
-const STARTERS = [
-  ['cream', 'none', 'The water is warm today. Say hello to the lily pads for me.'],
-  ['butter', 'daisy', 'You are doing better than you think. Keep paddling.'],
-  ['blush', 'bow', 'Found a perfect skipping stone this morning. Hope your day has one too.'],
-  ['sage', 'lilyleaf', 'Drink some water, stretch your wings, look at the sky for a minute.'],
-  ['lavender', 'beanie', 'Someone out there is glad you exist. (It is me, a duck.)'],
-  ['terracotta', 'sunhat', 'Slow is still moving. Ripples count.'],
-  ['mist', 'scarf', 'If you are reading this, the pond says hi.'],
-  ['cream', 'sunhat', 'Tiny reminder: you are allowed to rest.'],
-];
-
-
 const STARTER_BOTTLES = [
   ['cream', 0.22, 0.3, 'About money: future you is counting on present you. Start small, start now, and let time do the heavy lifting. A little set aside every month grows quietly into freedom. Nobody regrets starting early. They only regret waiting.'],
   ['rose', 0.76, 0.26, 'About love: the right one doesn\'t make you guess. You feel calmer around them, not smaller. You can be messy, boring and honest, and they stay curious about you. If it feels like home and like growing at the same time, hold on.'],
@@ -31,9 +19,6 @@ const STARTER_BOTTLES = [
 async function setup() {
   await db.init();
   const base = Date.now() - 7 * 24 * 3600 * 1000;
-  if (Number((await db.get('SELECT COUNT(*) AS n FROM ducks WHERE starter = 1')).n) === 0) {
-    for (const [i, [c, a, m]] of STARTERS.entries()) await db.insert('INSERT INTO ducks (color, accessory, message, starter, created_at) VALUES (?, ?, ?, 1, ?)', [c, a, m, base + i * 60000]);
-  }
   if (Number((await db.get('SELECT COUNT(*) AS n FROM bottles WHERE starter = 1')).n) === 0) {
     for (const [i, [p, x, y, m]] of STARTER_BOTTLES.entries()) await db.insert('INSERT INTO bottles (paper, x, y, message, starter, created_at) VALUES (?, ?, ?, ?, 1, ?)', [p, x, y, m, base + i * 60000]);
   }
