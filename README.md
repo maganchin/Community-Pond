@@ -12,4 +12,4 @@ npm start                      # http://localhost:3000, SQLite in ./data
 DATABASE_URL=postgres://... npm start
 ```
 
-Deploys to Vercel as-is (`vercel.json`, `api/index.js`); set `DATABASE_URL` in the project env.
+Deploys to Vercel as-is (`vercel.json`, `api/index.js`); set `SUPABASE_DB_URL` (or `DATABASE_URL`) in the project env.

@@ -1,4 +1,4 @@
-// Tiny async DB layer: Postgres when DATABASE_URL is set (Vercel + Supabase), SQLite otherwise (local).
+// Tiny async DB layer: Postgres when SUPABASE_DB_URL or DATABASE_URL is set (Vercel + Supabase), SQLite otherwise (local).
 const path = require('path');
 const fs = require('fs');
 
@@ -47,6 +47,8 @@ function sqlite(dir) {
   };
 }
 
-module.exports = process.env.DATABASE_URL
-  ? postgres(process.env.DATABASE_URL)
+const DB_URL = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL;
+
+module.exports = DB_URL
+  ? postgres(DB_URL)
   : sqlite(process.env.DATA_DIR || path.join(__dirname, 'data'));
