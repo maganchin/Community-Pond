@@ -2,6 +2,7 @@ import { Pond, drawDuckPortrait, drawBottlePortrait } from './pond.js';
 import { PAPERS } from './bottleart.js';
 import { COLORS, ACCESSORIES } from './duckart.js';
 import { paperDataURL } from './painter.js';
+import { sound } from './sounds.js';
 
 const $ = (id) => document.getElementById(id);
 const MAX_LETTER = 280;
@@ -40,7 +41,7 @@ const pond = new Pond($('pond'), {
   onDuckTap: (duck) => openCard(duck, 'main'),
   onInteract: () => dismissHint(),
   onBottleTap: () => toast('Pick up the fishing rod on the beach to reel in that bottle.'),
-  onBottleCatch: (b) => { catching = true; openCard(b, 'catch'); },
+  onBottleCatch: (b) => { catching = true; sound.splash(0.7); openCard(b, 'catch'); },
   onThrow: (p, aim) => throwBottle(p, aim),
   onBeachTap: (b) => openCard(b, 'beach'),
   onRodChange: (held) => {
@@ -105,6 +106,7 @@ function throwBottle(p, aim) {
   const message = pendingLetter;
   const temp = { kind: 'bottle', id: -Date.now(), paper: aim.paper, message, createdAt: Date.now(), x, y, starter: false };
   const o = pond.addBottle(temp, { from: pond.aimOrigin() });
+  setTimeout(() => sound.splash(1), 1100);
   api('/api/bottles', { method: 'POST', body: JSON.stringify({ message, paper: aim.paper, x, y }) })
     .then(({ bottle }) => {
       bottle.kind = 'bottle';
@@ -229,6 +231,15 @@ async function init() {
   setInterval(() => { if (!document.hidden) refresh(); }, 6000);
   showHint();
 }
+
+// ---------- sound ----------
+const renderSound = () => {
+  $('sound-btn').textContent = sound.on ? 'Sound on' : 'Sound off';
+  $('sound-btn').setAttribute('aria-pressed', sound.on);
+};
+$('sound-btn').addEventListener('click', (e) => { e.stopPropagation(); sound.toggle(); renderSound(); });
+['pointerdown', 'keydown'].forEach((t) => window.addEventListener(t, (e) => { if (e.target !== $('sound-btn')) sound.wake(); }, { passive: true }));
+renderSound();
 
 // ---------- hint & toast ----------
 const touch = matchMedia('(pointer: coarse)').matches;
