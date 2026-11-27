@@ -1,4 +1,4 @@
-// Soft garden-pond ambience synthesized with Web Audio: trickling water, birds, bees, crickets, frogs, splashes.
+// Soft garden-pond ambience synthesized with Web Audio: birds, bees, crickets, frogs, splashes.
 const KEY = 'duckpond.sound';
 let ctx = null, master = null, noise = null, timers = [];
 let enabled = localStorage.getItem(KEY) !== 'off';
@@ -9,17 +9,6 @@ function noiseBuffer() {
   let last = 0;
   for (let i = 0; i < len; i++) { last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02; d[i] = last * 3.5; }
   return buf;
-}
-
-function loop(filterType, freq, q, gain, lfoRate, lfoDepth) {
-  const src = ctx.createBufferSource(); src.buffer = noise; src.loop = true;
-  const f = ctx.createBiquadFilter(); f.type = filterType; f.frequency.value = freq; f.Q.value = q;
-  const g = ctx.createGain(); g.gain.value = gain;
-  const lfo = ctx.createOscillator(); lfo.frequency.value = lfoRate;
-  const lg = ctx.createGain(); lg.gain.value = lfoDepth;
-  lfo.connect(lg).connect(g.gain);
-  src.connect(f).connect(g).connect(master);
-  src.start(0, rand(0, 3)); lfo.start();
 }
 
 function chirp() {
@@ -97,7 +86,6 @@ function start() {
     ctx = new AC();
     master = ctx.createGain(); master.gain.value = 0; master.connect(ctx.destination);
     noise = noiseBuffer();
-    loop('lowpass', 520, 0.7, 0.07, 0.2, 0.03);  // quiet water trickle
     schedule(chirp, 2500, 7000);
     schedule(warble, 6000, 14000);
     schedule(bee, 5000, 13000);
