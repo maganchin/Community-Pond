@@ -232,6 +232,12 @@ async function init() {
   showHint();
 }
 
+// ---------- no zooming ----------
+['gesturestart', 'gesturechange'].forEach((t) => document.addEventListener(t, (e) => e.preventDefault()));
+document.addEventListener('touchmove', (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+window.addEventListener('wheel', (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
+window.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && ['+', '=', '-', '0'].includes(e.key)) e.preventDefault(); });
+
 // ---------- sound ----------
 const renderSound = () => {
   $('sound-btn').textContent = sound.on ? 'Sound on' : 'Sound off';

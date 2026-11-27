@@ -13,7 +13,7 @@
   --paper-img: none;
 }
 * { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; overflow: hidden; background: #8fb1da; color: var(--ink); font-family: var(--font); -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #8fb1da; color: var(--ink); font-family: var(--font); -webkit-tap-highlight-color: transparent; touch-action: manipulation; -webkit-text-size-adjust: 100%; }
 button, textarea { font: inherit; color: inherit; }
 [hidden] { display: none !important; }
 

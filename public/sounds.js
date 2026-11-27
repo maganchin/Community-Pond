@@ -1,4 +1,4 @@
-// Soft pond ambience synthesized with Web Audio: water, breeze, birds, frogs, splashes.
+// Soft garden-pond ambience synthesized with Web Audio: trickling water, birds, bees, crickets, frogs, splashes.
 const KEY = 'duckpond.sound';
 let ctx = null, master = null, noise = null, timers = [];
 let enabled = localStorage.getItem(KEY) !== 'off';
@@ -47,6 +47,44 @@ function ribbit() {
   }
 }
 
+function warble() {
+  const t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain(), lfo = ctx.createOscillator(), lg = ctx.createGain();
+  const base = rand(1800, 2600), dur = rand(0.6, 1.1);
+  o.type = 'sine'; o.frequency.setValueAtTime(base, t);
+  o.frequency.linearRampToValueAtTime(base * rand(1.15, 1.35), t + dur * 0.5);
+  o.frequency.linearRampToValueAtTime(base * rand(0.9, 1.05), t + dur);
+  lfo.frequency.value = rand(18, 28); lg.gain.value = base * 0.06;
+  lfo.connect(lg).connect(o.frequency);
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.025, t + 0.05);
+  g.gain.setValueAtTime(0.025, t + dur - 0.15); g.gain.linearRampToValueAtTime(0, t + dur);
+  o.connect(g).connect(master); o.start(t); lfo.start(t); o.stop(t + dur); lfo.stop(t + dur);
+}
+
+function bee() {
+  const t = ctx.currentTime, dur = rand(2.5, 4.5), o = ctx.createOscillator(), lp = ctx.createBiquadFilter(), g = ctx.createGain();
+  const vib = ctx.createOscillator(), vg = ctx.createGain(), pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+  const f = rand(190, 240);
+  o.type = 'sawtooth'; o.frequency.setValueAtTime(f, t); o.frequency.linearRampToValueAtTime(f * rand(0.92, 1.1), t + dur);
+  vib.frequency.value = rand(5, 9); vg.gain.value = 6; vib.connect(vg).connect(o.frequency);
+  lp.type = 'lowpass'; lp.frequency.value = 900; lp.Q.value = 2;
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.012, t + dur * 0.4); g.gain.linearRampToValueAtTime(0, t + dur);
+  let out = g;
+  if (pan) { const a = rand(-0.8, 0.8); pan.pan.setValueAtTime(a, t); pan.pan.linearRampToValueAtTime(-a * 0.6, t + dur); g.connect(pan); out = pan; }
+  o.connect(lp).connect(g); out.connect(master);
+  o.start(t); vib.start(t); o.stop(t + dur); vib.stop(t + dur);
+}
+
+function crickets() {
+  const t = ctx.currentTime, f = rand(4200, 5200), trills = Math.floor(rand(3, 7));
+  for (let k = 0; k < trills; k++) {
+    const s = t + k * rand(0.35, 0.5), o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'sine'; o.frequency.value = f;
+    g.gain.setValueAtTime(0, s);
+    for (let p = 0; p < 4; p++) { g.gain.linearRampToValueAtTime(0.012, s + p * 0.03 + 0.008); g.gain.linearRampToValueAtTime(0, s + p * 0.03 + 0.022); }
+    o.connect(g).connect(master); o.start(s); o.stop(s + 0.14);
+  }
+}
+
 function schedule(fn, min, max) {
   const id = setTimeout(() => { if (ctx && ctx.state === 'running') fn(); schedule(fn, min, max); }, rand(min, max));
   timers.push(id);
@@ -59,11 +97,12 @@ function start() {
     ctx = new AC();
     master = ctx.createGain(); master.gain.value = 0; master.connect(ctx.destination);
     noise = noiseBuffer();
-    loop('lowpass', 420, 0.7, 0.22, 0.13, 0.1);   // water lapping
-    loop('bandpass', 260, 0.9, 0.12, 0.07, 0.06); // low ripple
-    loop('bandpass', 1100, 0.5, 0.03, 0.05, 0.025); // breeze in the reeds
-    schedule(chirp, 3500, 11000);
-    schedule(ribbit, 9000, 22000);
+    loop('lowpass', 520, 0.7, 0.07, 0.2, 0.03);  // quiet water trickle
+    schedule(chirp, 2500, 7000);
+    schedule(warble, 6000, 14000);
+    schedule(bee, 5000, 13000);
+    schedule(crickets, 7000, 16000);
+    schedule(ribbit, 14000, 30000);
   }
   ctx.resume();
   master.gain.cancelScheduledValues(ctx.currentTime);
